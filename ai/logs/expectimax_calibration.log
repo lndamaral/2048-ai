@@ -1,0 +1,24 @@
+Expectimax Heuristic Auto-Calibrator
+Games per eval: 200 | Search: 3-ply | Threads: 8
+
+INITIAL: snake=0.500 empty=2.700 mono=1.000 smooth=0.100 corner=1.000 merge=0.000 trapped=0.000 | score=25445 win=61.0%
+
+--- Phase 1: step=0.50 ---
+  snake += 0.50 → BETTER: snake=1.000 empty=2.700 mono=1.000 smooth=0.100 corner=1.000 merge=0.000 trapped=0.000 | score=26876 win=62.0%
+  empty -= 0.50 → BETTER: snake=1.000 empty=2.200 mono=1.000 smooth=0.100 corner=1.000 merge=0.000 trapped=0.000 | score=27170 win=65.5%
+
+--- Phase 2: step=0.20 ---
+  empty -= 0.20 → BETTER: snake=1.000 empty=2.000 mono=1.000 smooth=0.100 corner=1.000 merge=0.000 trapped=0.000 | score=27483 win=63.0%
+  merge -= 0.20 → BETTER: snake=1.000 empty=2.000 mono=1.000 smooth=0.100 corner=1.000 merge=0.000 trapped=0.000 | score=27832 win=65.5%
+
+--- Phase 3: step=0.10 ---
+
+--- Phase 4: step=0.05 ---
+  snake -= 0.05 → BETTER: snake=0.950 empty=2.000 mono=1.000 smooth=0.100 corner=1.000 merge=0.000 trapped=0.000 | score=28159 win=62.5%
+
+============================================================
+FINAL OPTIMAL WEIGHTS:
+============================================================
+OPTIMAL: snake=0.950 empty=2.000 mono=1.000 smooth=0.100 corner=1.000 merge=0.000 trapped=0.000 | score=28159 win=62.5%
+
+Update expectimax_c.c evaluate() with these weights.

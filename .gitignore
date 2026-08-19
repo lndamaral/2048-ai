@@ -23,8 +23,7 @@ ai/*.log
 
 # Archived logs are kept in ai/logs/ (committed)
 
-# Game reports (generated during play)
-ai/reports/*.json
+# Game reports are committed (valuable historical data)
 
 # macOS
 .DS_Store
