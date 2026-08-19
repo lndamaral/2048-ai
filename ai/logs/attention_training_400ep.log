@@ -1,0 +1,52 @@
+N-Tuple loaded from /Users/leonardo/Projects/2048/ai/checkpoints/ntuple_best.bin (17 tables)
+N-Tuple base loaded from /Users/leonardo/Projects/2048/ai/checkpoints/ntuple_best.bin
+
+============================================================
+Attention N-Tuple Episode 100/50000 | Time: 285s
+============================================================
+  Average score:  765
+  Max score:      2808
+  Max tiles:      {16: 2, 32: 37, 64: 40, 128: 17, 256: 4}
+  2048+:          0x total
+  LR:             0.000991
+Attention model saved to /Users/leonardo/Projects/2048/ai/checkpoints/attention_best.pt
+
+============================================================
+Attention N-Tuple Episode 200/50000 | Time: 664s
+============================================================
+  Average score:  1425
+  Max score:      11768
+  Max tiles:      {32: 23, 64: 38, 128: 24, 256: 7, 512: 7, 1024: 1}
+  2048+:          0x total
+  LR:             0.000982
+Attention model saved to /Users/leonardo/Projects/2048/ai/checkpoints/attention_best.pt
+
+============================================================
+Attention N-Tuple Episode 300/50000 | Time: 1010s
+============================================================
+  Average score:  1485
+  Max score:      7288
+  Max tiles:      {16: 2, 32: 19, 64: 33, 128: 27, 256: 13, 512: 6}
+  2048+:          0x total
+  LR:             0.000973
+Attention model saved to /Users/leonardo/Projects/2048/ai/checkpoints/attention_best.pt
+
+============================================================
+Attention N-Tuple Episode 400/50000 | Time: 1418s
+============================================================
+  Average score:  1563
+  Max score:      6120
+  Max tiles:      {16: 2, 32: 11, 64: 23, 128: 41, 256: 20, 512: 3}
+  2048+:          0x total
+  LR:             0.000964
+Attention model saved to /Users/leonardo/Projects/2048/ai/checkpoints/attention_best.pt
+
+============================================================
+Attention N-Tuple Episode 500/50000 | Time: 1816s
+============================================================
+  Average score:  1764
+  Max score:      10236
+  Max tiles:      {16: 1, 32: 13, 64: 31, 128: 30, 256: 18, 512: 6, 1024: 1}
+  2048+:          0x total
+  LR:             0.000955
+Attention model saved to /Users/leonardo/Projects/2048/ai/checkpoints/attention_best.pt
