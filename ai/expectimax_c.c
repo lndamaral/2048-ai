@@ -285,10 +285,10 @@ static float evaluate(board_t b) {
             }
         if (s > best_snake) best_snake = s;
     }
-    score += best_snake * 0.5f;
+    score += best_snake * 0.95f;
 
     /* 2. Empty cells */
-    score += (empty > 0) ? logf((float)empty + 1.0f) * 2.7f : 0;
+    score += (empty > 0) ? logf((float)empty + 1.0f) * 2.0f : 0;
 
     /* 3. Monotonicity (using log2 values) */
     float mono = 0;
@@ -324,14 +324,33 @@ static float evaluate(board_t b) {
         }
     score += smooth * 0.1f;
 
-    /* 5. Max tile in corner */
+    /* 5. Max tile in corner — strong bonus/penalty */
     int corners[4] = {grid[0][0], grid[0][3], grid[3][0], grid[3][3]};
+    int max_in_corner = 0;
     for (int i = 0; i < 4; i++) {
-        if (corners[i] == max_val && max_val > 0) {
-            score += lg[0][0] * 1.0f; /* log2(max) */
-            break;
-        }
+        if (corners[i] == max_val) { max_in_corner = 1; break; }
     }
+    if (max_val > 0) {
+        float tile_val = (float)(1 << max_val);
+        if (max_in_corner)
+            score += tile_val * 1.0f;     /* bonus: reward corner placement */
+        else
+            score -= tile_val * 0.5f;     /* penalty: max tile not in corner */
+    }
+
+    /* 6. Edge monotonicity — tiles along edges should decrease from corner */
+    float edge_mono = 0;
+    /* Top edge */
+    for (int x = 0; x < 3; x++) {
+        if (grid[0][x] > 0 && grid[0][x+1] > 0 && grid[0][x] >= grid[0][x+1])
+            edge_mono += (float)grid[0][x];
+    }
+    /* Left edge */
+    for (int y = 0; y < 3; y++) {
+        if (grid[y][0] > 0 && grid[y+1][0] > 0 && grid[y][0] >= grid[y+1][0])
+            edge_mono += (float)grid[y][0];
+    }
+    score += edge_mono * 0.5f;
 
     return score;
 }
