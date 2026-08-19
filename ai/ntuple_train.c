@@ -518,6 +518,10 @@ static atomic_int total_wins = 0;
 static int total_episodes = 0;
 static float lr_start = 0.01f, lr_end = 0.0005f;
 
+/* Per-episode CSV logging for paper statistical analysis */
+static FILE *csv_file = NULL;
+static pthread_mutex_t csv_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 /* Per-thread stats */
 typedef struct {
     int thread_id;
@@ -582,16 +586,36 @@ static void *train_worker(void *arg) {
         stats->local_scores[bi] = game_score;
         stats->local_tiles[bi] = max_tile;
         stats->local_buf_idx++;
+
+        /* Log per-episode data to CSV (thread-safe) */
+        if (csv_file) {
+            pthread_mutex_lock(&csv_mutex);
+            fprintf(csv_file, "%d,%d,%d\n", ep, game_score, max_tile);
+            pthread_mutex_unlock(&csv_mutex);
+        }
     }
     return NULL;
 }
 
-static void train(int episodes, const char *save_dir, int use_tc, int n_threads) {
+static void train(int episodes, const char *save_dir, int use_tc, int n_threads,
+                  const char *csv_path) {
     net_init(&shared_net, use_tc);
 
     char path_latest[512], path_best[512];
     snprintf(path_latest, sizeof(path_latest), "%s/ntuple_latest.bin", save_dir);
     snprintf(path_best, sizeof(path_best), "%s/ntuple_best.bin", save_dir);
+
+    /* Open CSV for per-episode logging */
+    if (csv_path) {
+        csv_file = fopen(csv_path, "a");  /* append mode — preserves previous data */
+        if (csv_file) {
+            /* Write header only if file is empty */
+            fseek(csv_file, 0, SEEK_END);
+            if (ftell(csv_file) == 0)
+                fprintf(csv_file, "episode,score,max_tile\n");
+            printf("Logging per-episode data to %s\n", csv_path);
+        }
+    }
 
     net_load(&shared_net, path_latest);
 
@@ -682,6 +706,11 @@ static void train(int episodes, const char *save_dir, int use_tc, int n_threads)
     net_save(&shared_net, path_latest);
     printf("\nTraining complete! Best avg score: %.0f\n", best_avg);
 
+    if (csv_file) {
+        fclose(csv_file);
+        printf("Per-episode data saved to CSV\n");
+    }
+
     free(stats);
     free(threads);
     net_free(&shared_net);
@@ -694,6 +723,7 @@ int main(int argc, char **argv) {
     const char *save_dir = "checkpoints";
     int use_tc = 0;
     int n_threads = 1;
+    const char *csv_path = NULL;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--episodes") == 0 && i + 1 < argc)
@@ -706,6 +736,8 @@ int main(int argc, char **argv) {
             use_tc = 1;
         else if (strcmp(argv[i], "--threads") == 0 && i + 1 < argc)
             n_threads = atoi(argv[++i]);
+        else if (strcmp(argv[i], "--log-csv") == 0 && i + 1 < argc)
+            csv_path = argv[++i];
     }
 
     srand((unsigned)time(NULL));
@@ -716,6 +748,6 @@ int main(int argc, char **argv) {
            use_tc ? "ON" : "OFF", n_threads);
 
     build_move_tables();
-    train(episodes, save_dir, use_tc, n_threads);
+    train(episodes, save_dir, use_tc, n_threads, csv_path);
     return 0;
 }
