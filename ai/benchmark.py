@@ -243,10 +243,17 @@ def main():
                         default=['expectimax', 'ntuple', 'attention', 'dqn'],
                         choices=['expectimax', 'ntuple', 'attention', 'dqn'])
     parser.add_argument('--output', type=str, default='benchmark_results.json')
+    parser.add_argument('--seed', type=int, default=42, help='Random seed for reproducibility')
     args = parser.parse_args()
 
+    # Set reproducible seeds
+    np.random.seed(args.seed)
+    import random
+    random.seed(args.seed)
+
     print(f"Benchmark: {args.games} games per agent")
-    print(f"Agents: {', '.join(args.agents)}\n")
+    print(f"Agents: {', '.join(args.agents)}")
+    print(f"Seed: {args.seed}\n")
 
     runners = {
         'expectimax': run_expectimax,
@@ -262,10 +269,19 @@ def main():
         if result:
             results[agent_name] = result
 
-    # Save results
+    # Save results with metadata
+    output = {
+        "metadata": {
+            "seed": args.seed,
+            "games_per_agent": args.games,
+            "timestamp": datetime.now().isoformat(),
+            "git_commit": os.popen("git rev-parse --short HEAD 2>/dev/null").read().strip(),
+        },
+        "results": results,
+    }
     output_path = os.path.join(os.path.dirname(__file__), args.output)
     with open(output_path, 'w') as f:
-        json.dump(results, f, indent=2)
+        json.dump(output, f, indent=2)
     print(f"\nResults saved to {output_path}")
 
 
