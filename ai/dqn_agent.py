@@ -230,6 +230,49 @@ DQN = DuelingDQN
 ReplayBuffer = PrioritizedReplayBuffer
 
 
+class NStepBuffer:
+    """
+    Accumulates n consecutive transitions and computes n-step returns.
+
+    Instead of learning from single transitions (s, a, r, s'),
+    we learn from n-step transitions (s, a, R_n, s_n) where:
+        R_n = r_1 + γ·r_2 + γ²·r_3 + ... + γ^(n-1)·r_n
+
+    This propagates rewards faster through the network,
+    crucial for long-horizon games like 2048.
+    """
+
+    def __init__(self, n_steps=3, gamma=0.99):
+        self.n_steps = n_steps
+        self.gamma = gamma
+        self.buffer = deque(maxlen=n_steps)
+
+    def push(self, state, action, reward, next_state, done, valid_moves):
+        self.buffer.append((state, action, reward, next_state, done, valid_moves))
+
+    def is_ready(self):
+        return len(self.buffer) == self.n_steps
+
+    def get(self):
+        """Returns the n-step transition (s_0, a_0, R_n, s_n, done_n, valid_n)."""
+        state, action = self.buffer[0][0], self.buffer[0][1]
+
+        # Compute n-step discounted reward
+        n_step_reward = 0
+        for i, (_, _, r, _, d, _) in enumerate(self.buffer):
+            n_step_reward += (self.gamma ** i) * r
+            if d:
+                # Episode ended before n steps — use this as the final state
+                return state, action, n_step_reward, self.buffer[i][3], True, self.buffer[i][5]
+
+        # No terminal state in the n steps — use the last state
+        last = self.buffer[-1]
+        return state, action, n_step_reward, last[3], last[4], last[5]
+
+    def reset(self):
+        self.buffer.clear()
+
+
 class DQNAgent:
     """
     Optimized DQN Agent with:
@@ -237,9 +280,12 @@ class DQNAgent:
     - Prioritized Experience Replay
     - Noisy Networks for exploration (no epsilon-greedy needed)
     - Double DQN for reduced overestimation
+    - N-step returns (faster reward propagation)
     - Gradient clipping
     - Learning rate scheduling
     """
+
+    N_STEPS = 3  # look-ahead steps for n-step returns
 
     def __init__(
         self,
@@ -276,6 +322,7 @@ class DQNAgent:
         self.optimizer = optim.Adam(self.policy_net.parameters(), lr=lr)
         self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=50_000, gamma=0.5)
         self.memory = PrioritizedReplayBuffer(buffer_size)
+        self.n_step_buffer = NStepBuffer(self.N_STEPS, gamma)
 
         self.steps_done = 0
         self.training_losses = []
@@ -312,10 +359,23 @@ class DQNAgent:
             return int(np.argmax(masked))
 
     def store_transition(self, state, action, reward, next_state, done, valid_moves):
-        self.memory.push(state, action, reward, next_state, done, valid_moves)
+        """Store transition using n-step buffer. Only pushes to replay when n steps accumulated."""
+        self.n_step_buffer.push(state, action, reward, next_state, done, valid_moves)
+
+        if self.n_step_buffer.is_ready():
+            s, a, r_n, s_n, d_n, vm_n = self.n_step_buffer.get()
+            self.memory.push(s, a, r_n, s_n, d_n, vm_n)
+
+        # Flush remaining transitions at episode end
+        if done:
+            while len(self.n_step_buffer.buffer) > 0:
+                s, a, r_n, s_n, d_n, vm_n = self.n_step_buffer.get()
+                self.memory.push(s, a, r_n, s_n, d_n, vm_n)
+                self.n_step_buffer.buffer.popleft()
+            self.n_step_buffer.reset()
 
     def train_step(self):
-        """Training step with Double Dueling DQN + Prioritized Replay."""
+        """Training step with Double Dueling DQN + Prioritized Replay + N-step returns."""
         if len(self.memory) < self.batch_size:
             return None
 
@@ -350,7 +410,8 @@ class DQNAgent:
             best_actions = next_q_policy.argmax(1)
             next_q_target = self.target_net(next_states_t)
             next_q = next_q_target.gather(1, best_actions.unsqueeze(1)).squeeze(1)
-            target = rewards_t + self.gamma * next_q * (1 - dones_t)
+            # N-step: discount by gamma^n instead of gamma
+            target = rewards_t + (self.gamma ** self.N_STEPS) * next_q * (1 - dones_t)
 
         # TD errors for priority update
         td_errors = (q_values - target).detach().cpu().numpy()
