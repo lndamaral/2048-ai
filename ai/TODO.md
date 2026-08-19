@@ -10,9 +10,17 @@
 
 - [ ] **"Easy loss" analysis**: After training, identify games where the agent failed to reach 2048. Replay them from the JSON reports and find the exact move where the strategy went wrong. These should be preventable losses.
 
-- [ ] **Inter-tuple correlation model**: Implement a small MLP (17 inputs → 64 → 1) on top of N-Tuple outputs to learn correlations between tuples. Potentially novel research — nobody has published this for 2048. Could close the gap from 97% to 99%+.
+- [ ] **Inter-tuple correlation model**: ✅ IMPLEMENTED as Attention N-Tuple (4th agent). Related work: IEEE paper "Systematic selection of N-tuple networks with consideration of interinfluence" (2017) used MLP to combine tuples. Our approach extends this with attention mechanism + phase-aware features. If attention improves over pure N-Tuple: publishable as novel contribution. If not: publishable as negative result proving sum-based combination is sufficient.
 
-- [ ] **Benchmark script**: Create a unified script that runs all 3 agents (1000+ games each) and produces a single comparison report with statistical analysis (mean, median, std dev, confidence intervals, score distributions, tile distributions).
+- [ ] **Benchmark script**: Create a unified script that runs all 4 agents (1000+ games each) and produces a single comparison report with statistical analysis (mean, median, std dev, confidence intervals, score distributions, tile distributions).
+
+## Attention N-Tuple Optimization (sequential order)
+
+- [ ] **Step 1**: Let current 50k training (1-ply) complete (~30 min). Evaluate if attention improves over N-Tuple pure with 1-ply.
+- [ ] **Step 2**: If yes → tune hidden layer size (try 32, 64, 128, 256). Retrain best (~30 min each).
+- [ ] **Step 3**: If yes → add more board features (snake score, monotonicity, trapped tiles). Retrain (~30 min).
+- [ ] **Step 4**: Retrain with 3-ply search for maximum quality (~5h). This is the definitive version.
+- [ ] **Step 5**: Compare Attention 3-ply vs N-Tuple 5-ply (C) — the ultimate test.
 
 ## Training
 
