@@ -89,3 +89,7 @@
 - [ ] **Agent ensemble**: Have the 3 agents "vote" on each move. Does consensus lead to better play than any individual agent?
 
 - [ ] **Transfer to 5x5 grid**: Can the learned N-Tuple weights transfer to a larger board? Or does it need retraining from scratch?
+
+## Conclusion (write after results are confirmed)
+
+- [ ] **Broader Applications section**: If the Attention N-Tuple shows positive results, write a "Future Work & Broader Applications" section showing how the pattern (context-dependent weighting of independent evaluators) applies beyond 2048: financial indicators, medical diagnosis, autonomous driving sensors, ensemble ML, fraud detection, recommendation systems. The core insight is a bridge between fast tabular methods and expressive deep learning — applicable to any domain with multiple independent evaluators.
