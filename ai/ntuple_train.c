@@ -1,15 +1,15 @@
 /*
- * N-Tuple Network Training para 2048 — versão otimizada.
+ * N-Tuple Network Training for 2048 — optimized version.
  *
- * Otimizações:
- *   - Move lookup tables (pré-computa merge para todas as 65536 linhas)
- *   - Log2 pré-computado
- *   - Multithreading hogwild (N jogos em paralelo, sem locks)
+ * Optimizations:
+ *   - Move lookup tables (pre-computes merge for all 65536 rows)
+ *   - Pre-computed log2
+ *   - Multithreading hogwild (N games in parallel, no locks)
  *   - TC-learning (per-weight adaptive LR)
- *   - 3-ply search durante treino
+ *   - 3-ply search during training
  *
- * Compilar: cc -O3 -o ntuple_train ntuple_train.c -lm -lpthread
- * Usar:     ./ntuple_train --episodes 200000 --depth 1 --tc --threads 8
+ * Compile: cc -O3 -o ntuple_train ntuple_train.c -lm -lpthread
+ * Usage:   ./ntuple_train --episodes 200000 --depth 1 --tc --threads 8
  */
 
 #include <math.h>
@@ -23,7 +23,7 @@
 
 /* ─── Pre-computed tables ───────────────────────────────────── */
 
-/* Move lookup: row (4 nibbles as actual values) → merged row + score */
+/* Move lookup: row (4 nibbles as actual values) -> merged row + score */
 typedef struct {
     int cells[4];
     int score;
@@ -396,7 +396,7 @@ static void net_save(const ntuple_net_t *net, const char *path) {
     fseek(fs, 0, SEEK_END);
     long sz = ftell(fs);
     fclose(fs);
-    printf("N-Tuple salvo em %s (%.1f MB)\n", path, sz / 1024.0 / 1024.0);
+    printf("N-Tuple saved to %s (%.1f MB)\n", path, sz / 1024.0 / 1024.0);
 }
 
 static int net_load(ntuple_net_t *net, const char *path) {
@@ -405,7 +405,7 @@ static int net_load(ntuple_net_t *net, const char *path) {
     int n;
     if (fread(&n, sizeof(int), 1, f) != 1) { fclose(f); return 0; }
     if (n != net->n_base) {
-        fprintf(stderr, "Checkpoint incompatível: %d vs %d tuplas\n", n, net->n_base);
+        fprintf(stderr, "Incompatible checkpoint: %d vs %d tuples\n", n, net->n_base);
         fclose(f);
         return 0;
     }
@@ -421,9 +421,9 @@ static int net_load(ntuple_net_t *net, const char *path) {
             fread(net->tc_sum[t], sizeof(float), LUT_SIZE, f);
             fread(net->tc_abs[t], sizeof(float), LUT_SIZE, f);
         }
-        printf("N-Tuple + TC carregado de %s\n", path);
+        printf("N-Tuple + TC loaded from %s\n", path);
     } else {
-        printf("N-Tuple carregado de %s (TC inicializado)\n", path);
+        printf("N-Tuple loaded from %s (TC initialized)\n", path);
     }
     fclose(f);
     return 1;
@@ -642,10 +642,10 @@ static void train(int episodes, const char *save_dir, int use_tc, int n_threads)
             int wins = atomic_load(&total_wins);
 
             printf("\n============================================================\n");
-            printf("N-Tuple Episódio %d/%d | Tempo: %lds | %d threads\n",
+            printf("N-Tuple Episode %d/%d | Time: %lds | %d threads\n",
                    done, episodes, elapsed, n_threads);
             printf("============================================================\n");
-            printf("  Score médio:  %.0f\n", avg);
+            printf("  Average score:  %.0f\n", avg);
             printf("  Max tiles:    {");
             int first = 1;
             for (int i = 0; i < 20; i++) {
@@ -680,7 +680,7 @@ static void train(int episodes, const char *save_dir, int use_tc, int n_threads)
         pthread_join(threads[i], NULL);
 
     net_save(&shared_net, path_latest);
-    printf("\nTreinamento concluído! Best avg score: %.0f\n", best_avg);
+    printf("\nTraining complete! Best avg score: %.0f\n", best_avg);
 
     free(stats);
     free(threads);
@@ -710,8 +710,8 @@ int main(int argc, char **argv) {
 
     srand((unsigned)time(NULL));
     setbuf(stdout, NULL);
-    printf("N-Tuple Training em C (otimizado)\n");
-    printf("Episódios: %d | Tuplas: %d | Search: %d-ply | TC: %s | Threads: %d\n",
+    printf("N-Tuple Training in C (optimized)\n");
+    printf("Episodes: %d | Tuples: %d | Search: %d-ply | TC: %s | Threads: %d\n",
            episodes, N_TUPLES, 1 + train_search_depth * 2,
            use_tc ? "ON" : "OFF", n_threads);
 

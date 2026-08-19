@@ -1,13 +1,13 @@
 """
-N-Tuple Network para 2048 — versão estado da arte.
+N-Tuple Network for 2048 — state of the art version.
 
-Baseado em Wu et al. (2014) e Szubert & Jaśkowski (2014).
+Based on Wu et al. (2014) and Szubert & Jaskowski (2014).
 
-Chaves para 90%+:
-- 17 tuplas de 6 posições (cobertura espacial completa)
-- LR alto (0.1) com decay — n-tuple updates são esparsos
+Keys for 90%+:
+- 17 tuples of 6 positions (complete spatial coverage)
+- High LR (0.1) with decay — n-tuple updates are sparse
 - Forward TD(0) afterstate learning
-- 8 simetrias na avaliação e no update
+- 8 symmetries in evaluation and update
 """
 
 import numpy as np
@@ -19,8 +19,8 @@ from expectimax_agent import fast_move
 
 class NTupleNetwork:
     """
-    N-Tuple Network com 17 tuplas de 6 posições.
-    Padrões baseados em Wu et al. (2014) — cobertura completa do 4x4.
+    N-Tuple Network with 17 tuples of 6 positions.
+    Patterns based on Wu et al. (2014) — complete 4x4 coverage.
     """
 
     TUPLES = [
@@ -67,7 +67,7 @@ class NTupleNetwork:
         self.learning_rate = 0.01
 
     def _generate_symmetries(self, positions):
-        """Gera as 8 simetrias (4 rotações × 2 espelhamentos), sem duplicatas."""
+        """Generates the 8 symmetries (4 rotations x 2 reflections), without duplicates."""
         symmetries = []
         pos = list(positions)
 
@@ -87,7 +87,7 @@ class NTupleNetwork:
         return unique
 
     def _grid_to_log(self, grid):
-        """Converte grid para log2 values (cached)."""
+        """Converts grid to log2 values (cached)."""
         log_grid = np.zeros((4, 4), dtype=np.int32)
         for y in range(4):
             for x in range(4):
@@ -101,7 +101,7 @@ class NTupleNetwork:
         return log_grid
 
     def _encode_tuple(self, grid, positions):
-        """Codifica valores do grid nas posições como índice na LUT."""
+        """Encodes grid values at positions as an index into the LUT."""
         index = 0
         for y, x in positions:
             val = grid[y, x]
@@ -115,14 +115,14 @@ class NTupleNetwork:
         return index
 
     def _encode_tuple_fast(self, log_grid, positions):
-        """Versão rápida usando log_grid pré-computado."""
+        """Fast version using pre-computed log_grid."""
         index = 0
         for y, x in positions:
             index = index * self.MAX_TILE_LOG2 + log_grid[y, x]
         return index
 
     def evaluate(self, grid):
-        """Avalia um board state."""
+        """Evaluates a board state."""
         lg = self._grid_to_log(grid)
         total = 0.0
         for i, symmetries in enumerate(self.all_tuples):
@@ -133,7 +133,7 @@ class NTupleNetwork:
         return total
 
     def update(self, grid, delta):
-        """Atualiza pesos para o board state dado."""
+        """Updates weights for the given board state."""
         delta = max(-1000.0, min(1000.0, delta))
         adj = self.learning_rate * delta
         lg = self._grid_to_log(grid)
@@ -150,7 +150,7 @@ class NTupleNetwork:
                 f.write(struct.pack('I', len(w)))
                 f.write(w.tobytes())
         size_mb = os.path.getsize(path) / 1024 / 1024
-        print(f"N-Tuple salvo em {path} ({size_mb:.1f} MB)")
+        print(f"N-Tuple saved to {path} ({size_mb:.1f} MB)")
 
     def load(self, path):
         with open(path, 'rb') as f:
@@ -160,11 +160,11 @@ class NTupleNetwork:
                 size = struct.unpack('I', f.read(4))[0]
                 data = np.frombuffer(f.read(size * 4), dtype=np.float32).copy()
                 self.weights.append(data)
-        print(f"N-Tuple carregado de {path} ({n_tables} tabelas)")
+        print(f"N-Tuple loaded from {path} ({n_tables} tables)")
 
 
 def select_best_afterstate(net, grid):
-    """Escolhe a melhor ação avaliando afterstates."""
+    """Chooses the best action by evaluating afterstates."""
     best_action = -1
     best_value = -1e18
     best_after = None
@@ -188,10 +188,10 @@ def train_ntuple(episodes=50000, save_every=1000):
     """
     Forward TD(0) afterstate learning.
 
-    A cada jogada:
+    At each move:
       V(s_prev) += lr * (r + V(s_curr) - V(s_prev))
 
-    Onde s_prev e s_curr são afterstates (após mover, antes do tile aleatório).
+    Where s_prev and s_curr are afterstates (after moving, before the random tile).
     """
     save_dir = os.path.join(os.path.dirname(__file__), 'checkpoints')
     os.makedirs(save_dir, exist_ok=True)
@@ -203,7 +203,7 @@ def train_ntuple(episodes=50000, save_every=1000):
         try:
             net.load(model_path)
         except Exception as e:
-            print(f"Checkpoint incompatível ({e}), iniciando do zero")
+            print(f"Incompatible checkpoint ({e}), starting from scratch")
 
     scores = []
     max_tiles = []
@@ -224,7 +224,7 @@ def train_ntuple(episodes=50000, save_every=1000):
         game = Game2048()
         game.reset()
 
-        # Primeiro afterstate
+        # First afterstate
         action, prev_after, prev_reward = select_best_afterstate(net, game.grid)
         if action == -1:
             continue
@@ -266,10 +266,10 @@ def train_ntuple(episodes=50000, save_every=1000):
 
             avg = np.mean(recent)
             print(f"\n{'='*60}")
-            print(f"N-Tuple Episódio {episode}/{episodes} | Tempo: {elapsed:.0f}s")
+            print(f"N-Tuple Episode {episode}/{episodes} | Time: {elapsed:.0f}s")
             print(f"{'='*60}")
-            print(f"  Score médio:  {avg:.0f}")
-            print(f"  Score máximo: {max(recent)}")
+            print(f"  Average score:  {avg:.0f}")
+            print(f"  Max score: {max(recent)}")
             print(f"  Max tiles:    {dict(sorted(tile_dist.items()))}")
             print(f"  2048+:        {wins}x total")
             print(f"  LR:           {net.learning_rate:.6f}")
@@ -282,7 +282,7 @@ def train_ntuple(episodes=50000, save_every=1000):
             net.save(model_path)
 
     net.save(model_path)
-    print(f"\nTreinamento concluído! Best avg score: {best_avg:.0f}")
+    print(f"\nTraining complete! Best avg score: {best_avg:.0f}")
     return net
 
 

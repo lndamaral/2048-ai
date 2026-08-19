@@ -1,6 +1,6 @@
 """
-Motor do jogo 2048 em Python.
-Reproduz fielmente a lógica do jogo original de Gabriele Cirulli.
+2048 game engine in Python.
+Faithfully reproduces the logic of Gabriele Cirulli's original game.
 """
 
 import numpy as np
@@ -46,7 +46,7 @@ class Game2048:
         return self.grid.copy()
 
     def _build_traversals(self, direction):
-        """Determina a ordem de percurso baseada na direção do movimento."""
+        """Determines the traversal order based on the move direction."""
         dx, dy = self.VECTORS[direction]
         xs = list(range(self.size))
         ys = list(range(self.size))
@@ -57,7 +57,7 @@ class Game2048:
         return xs, ys
 
     def _find_farthest(self, x, y, dx, dy):
-        """Encontra a posição mais distante que um tile pode alcançar."""
+        """Finds the farthest position a tile can reach."""
         while True:
             prev_x, prev_y = x, y
             x += dx
@@ -67,9 +67,9 @@ class Game2048:
 
     def move(self, direction):
         """
-        Executa um movimento. Retorna (reward, changed).
-        reward = pontos ganhos neste movimento.
-        changed = True se o tabuleiro mudou.
+        Executes a move. Returns (reward, changed).
+        reward = points earned in this move.
+        changed = True if the board changed.
         """
         if self.over:
             return 0, False
@@ -89,11 +89,11 @@ class Game2048:
                 value = self.grid[y][x]
                 far_x, far_y, next_x, next_y = self._find_farthest(x, y, dx, dy)
 
-                # Verifica merge
+                # Check merge
                 if (0 <= next_x < self.size and 0 <= next_y < self.size
                         and self.grid[next_y][next_x] == value
                         and not merged[next_y][next_x]):
-                    # Merge
+                    # Merge (unchanged)
                     new_value = value * 2
                     self.grid[y][x] = 0
                     self.grid[next_y][next_x] = new_value
@@ -104,7 +104,7 @@ class Game2048:
                         self.won = True
                     moved = True
                 elif far_x != x or far_y != y:
-                    # Move sem merge
+                    # Move without merge
                     self.grid[y][x] = 0
                     self.grid[far_y][far_x] = value
                     moved = True
@@ -117,10 +117,10 @@ class Game2048:
         return reward, moved
 
     def _moves_available(self):
-        """Verifica se ainda existem movimentos possíveis."""
+        """Checks if there are still possible moves."""
         if self._empty_cells():
             return True
-        # Verifica merges possíveis
+        # Check possible merges
         for y in range(self.size):
             for x in range(self.size):
                 val = self.grid[y][x]
@@ -131,13 +131,13 @@ class Game2048:
         return False
 
     def is_valid_move(self, direction):
-        """Verifica se um movimento é válido sem executá-lo."""
+        """Checks if a move is valid without executing it."""
         backup = self.grid.copy()
         score_backup = self.score
         won_backup = self.won
         over_backup = self.over
 
-        # Simula sem adicionar tile aleatório
+        # Simulate without adding a random tile
         dx, dy = self.VECTORS[direction]
         xs, ys = self._build_traversals(direction)
         merged = np.zeros((self.size, self.size), dtype=bool)
@@ -168,7 +168,7 @@ class Game2048:
         return moved
 
     def get_valid_moves(self):
-        """Retorna lista de movimentos válidos."""
+        """Returns list of valid moves."""
         return [d for d in range(4) if self.is_valid_move(d)]
 
     def max_tile(self):

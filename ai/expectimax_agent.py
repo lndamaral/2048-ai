@@ -1,16 +1,16 @@
 """
-Agente Expectimax otimizado para o jogo 2048.
+Optimized Expectimax agent for the 2048 game.
 
-Usa simulação de movimentos inline (sem criar objetos Game2048)
-para máxima velocidade na busca em árvore.
+Uses inline move simulation (without creating Game2048 objects)
+for maximum speed in tree search.
 """
 
 import numpy as np
 
 
 def _merge_line(line):
-    """Merge uma linha para a esquerda. Retorna (nova_linha, score, changed)."""
-    # Compacta: remove zeros
+    """Merge a line to the left. Returns (new_line, score, changed)."""
+    # Compact: remove zeros
     non_zero = line[line != 0]
     result = np.zeros(4, dtype=np.int32)
     score = 0
@@ -35,8 +35,8 @@ def _merge_line(line):
 
 def fast_move(grid, direction):
     """
-    Executa um movimento no grid (numpy array 4x4).
-    Retorna (new_grid, score, moved) sem efeitos colaterais.
+    Executes a move on the grid (numpy array 4x4).
+    Returns (new_grid, score, moved) without side effects.
     """
     new_grid = np.zeros((4, 4), dtype=np.int32)
     total_score = 0
@@ -69,13 +69,13 @@ def fast_move(grid, direction):
 
 class ExpectimaxAgent:
     """
-    Agente Expectimax otimizado.
-    Depth adaptativo: usa profundidade maior quando há poucas células vazias.
+    Optimized Expectimax agent.
+    Adaptive depth: uses greater depth when there are few empty cells.
     """
 
     def __init__(self, depth=3):
         self.base_depth = depth
-        # Pesos das heurísticas
+        # Heuristic weights
         self.snake_weights = [
             np.array([
                 [2**15, 2**14, 2**13, 2**12],
@@ -84,7 +84,7 @@ class ExpectimaxAgent:
                 [2**0,  2**1,  2**2,  2**3],
             ], dtype=np.float64),
         ]
-        # Pré-computa as 8 variações (4 rotações x 2 espelhamentos)
+        # Pre-compute the 8 variations (4 rotations x 2 reflections)
         base = self.snake_weights[0]
         self.snake_weights = []
         for _ in range(4):
@@ -93,20 +93,20 @@ class ExpectimaxAgent:
             base = np.rot90(base)
 
     def evaluate(self, grid):
-        """Avalia um estado do tabuleiro com heurísticas combinadas."""
+        """Evaluates a board state with combined heuristics."""
         empty = np.count_nonzero(grid == 0)
 
-        # Snake pattern — melhor das 8 orientações
+        # Snake pattern — best of 8 orientations
         g = grid.astype(np.float64)
         snake_score = max(np.sum(g * w) for w in self.snake_weights)
 
-        # Monotonicidade
+        # Monotonicity
         mono = self._monotonicity(grid)
 
         # Smoothness
         smooth = self._smoothness(grid)
 
-        # Penalidade por game over iminente
+        # Penalty for imminent game over
         if empty == 0:
             has_merge = False
             for y in range(4):
@@ -131,14 +131,14 @@ class ExpectimaxAgent:
         )
 
     def _monotonicity(self, grid):
-        """Mede quão monotônicas são as linhas e colunas."""
+        """Measures how monotonic the rows and columns are."""
         score = 0.0
         log_grid = np.zeros((4, 4), dtype=np.float64)
         mask = grid > 0
         log_grid[mask] = np.log2(grid[mask].astype(np.float64))
 
         for i in range(4):
-            # Linhas
+            # Rows
             left = right = 0.0
             for j in range(3):
                 diff = log_grid[i, j] - log_grid[i, j + 1]
@@ -148,7 +148,7 @@ class ExpectimaxAgent:
                     right -= diff
             score -= min(left, right)
 
-            # Colunas
+            # Columns
             up = down = 0.0
             for j in range(3):
                 diff = log_grid[j, i] - log_grid[j + 1, i]
@@ -161,7 +161,7 @@ class ExpectimaxAgent:
         return score
 
     def _smoothness(self, grid):
-        """Penaliza diferenças entre tiles adjacentes."""
+        """Penalizes differences between adjacent tiles."""
         score = 0.0
         log_grid = np.zeros((4, 4), dtype=np.float64)
         mask = grid > 0
@@ -179,7 +179,7 @@ class ExpectimaxAgent:
         return score
 
     def select_action(self, grid):
-        """Escolhe a melhor ação usando busca Expectimax."""
+        """Chooses the best action using Expectimax search."""
         depth = self.base_depth
         best_action = 0
         best_score = -np.inf
@@ -198,12 +198,12 @@ class ExpectimaxAgent:
         return best_action, best_score
 
     def _chance_node(self, grid, depth):
-        """Nó CHANCE: média ponderada sobre tiles aleatórios."""
+        """CHANCE node: weighted average over random tiles."""
         empty_cells = list(zip(*np.where(grid == 0)))
         if not empty_cells:
             return self.evaluate(grid)
 
-        # Amostra se muitas células vazias (otimização crucial)
+        # Sample if many empty cells (crucial optimization)
         if len(empty_cells) > 3:
             indices = np.random.choice(len(empty_cells), 3, replace=False)
             cells = [empty_cells[i] for i in indices]
@@ -224,7 +224,7 @@ class ExpectimaxAgent:
         return total / len(cells)
 
     def _max_node(self, grid, depth):
-        """Nó MAX: jogador escolhe o melhor movimento."""
+        """MAX node: player chooses the best move."""
         best_score = -np.inf
         any_moved = False
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Análise e visualização dos logs de treinamento e relatórios de jogo do 2048.
-Gera gráficos comparativos dos agentes DQN, Expectimax e N-Tuple.
+Analysis and visualization of training logs and game reports for 2048.
+Generates comparative charts of the DQN, Expectimax, and N-Tuple agents.
 """
 
 import re
@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import numpy as np
 
-# ── Configuração ──────────────────────────────────────────────────────────────
+# ── Configuration ─────────────────────────────────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CHARTS_DIR = os.path.join(BASE_DIR, "charts")
 REPORTS_DIR = os.path.join(BASE_DIR, "reports")
@@ -25,7 +25,7 @@ os.makedirs(CHARTS_DIR, exist_ok=True)
 DPI = 150
 TILE_KEYS = [128, 256, 512, 1024, 2048, 4096, 8192]
 
-# Paleta de cores consistente
+# Consistent color palette
 COLORS = {
     "ntuple_training": "#2196F3",
     "ntuple_training_v1_12k": "#1565C0",
@@ -67,10 +67,10 @@ plt.rcParams.update({
 })
 
 
-# ── Parser de logs ────────────────────────────────────────────────────────────
+# ── Log parser ────────────────────────────────────────────────────────────────
 
 def parse_log(filepath):
-    """Analisa um arquivo de log de treinamento e retorna lista de checkpoints."""
+    """Parses a training log file and returns a list of checkpoints."""
     if not os.path.exists(filepath):
         return []
     with open(filepath, "r", encoding="utf-8", errors="replace") as f:
@@ -99,7 +99,7 @@ def parse_log(filepath):
 
         entry = {"episode": ep, "total": total, "time_s": time_s}
 
-        # Score médio
+        # Average score
         sm = re.search(r"Score m[ée]dio:\s+([\d]+)", block)
         if sm:
             entry["score_avg"] = int(sm.group(1))
@@ -138,7 +138,7 @@ def parse_log(filepath):
 
 
 def detect_stage_split(filepath):
-    """Detecta onde muda de 1-ply para 3-ply no log principal."""
+    """Detects where it switches from 1-ply to 3-ply in the main log."""
     if not os.path.exists(filepath):
         return None
     with open(filepath, "r", encoding="utf-8", errors="replace") as f:
@@ -150,7 +150,7 @@ def detect_stage_split(filepath):
     return None
 
 
-# ── Carregar dados ────────────────────────────────────────────────────────────
+# ── Load data ─────────────────────────────────────────────────────────────────
 
 LOG_FILES = {
     "ntuple_training": os.path.join(BASE_DIR, "ntuple_training.log"),
@@ -180,7 +180,7 @@ for f in sorted(glob.glob(os.path.join(REPORTS_DIR, "*.json"))):
 print(f"  {len(reports)} reports loaded")
 
 
-# ── Chart 1: Score médio ao longo dos episódios ──────────────────────────────
+# ── Chart 1: Average score over episodes ─────────────────────────────────────
 
 def chart_score_evolution():
     fig, ax = plt.subplots(figsize=(12, 6))
@@ -205,7 +205,7 @@ def chart_score_evolution():
     print(f"  Saved: {path}")
 
 
-# ── Chart 2: Distribuição de tiles ao longo do treinamento ────────────────────
+# ── Chart 2: Tile distribution throughout training ───────────────────────────
 
 def chart_tile_distribution():
     # Use the main ntuple_training run (largest)
@@ -257,7 +257,7 @@ def chart_tile_distribution():
     print(f"  Saved: {path}")
 
 
-# ── Chart 3: Taxa de 2048+ ───────────────────────────────────────────────────
+# ── Chart 3: 2048+ rate ──────────────────────────────────────────────────────
 
 def chart_2048_rate():
     fig, ax = plt.subplots(figsize=(12, 6))
@@ -292,7 +292,7 @@ def chart_2048_rate():
     print(f"  Saved: {path}")
 
 
-# ── Chart 4: Comparação de agentes ───────────────────────────────────────────
+# ── Chart 4: Agent comparison ────────────────────────────────────────────────
 
 def chart_agent_comparison():
     if not reports:
@@ -312,7 +312,7 @@ def chart_agent_comparison():
 
     fig, axes = plt.subplots(1, 3, figsize=(14, 5))
 
-    # Score médio
+    # Average score
     ax = axes[0]
     means = [np.mean(agent_data[a]["scores"]) for a in agents_present]
     bars = ax.bar([AGENT_LABELS[a] for a in agents_present], means,
@@ -323,7 +323,7 @@ def chart_agent_comparison():
         ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 200,
                 f"{val:.0f}", ha="center", va="bottom", fontsize=9)
 
-    # Max tile médio
+    # Average max tile
     ax = axes[1]
     means_tile = [np.mean(agent_data[a]["max_tiles"]) for a in agents_present]
     bars = ax.bar([AGENT_LABELS[a] for a in agents_present], means_tile,
@@ -354,7 +354,7 @@ def chart_agent_comparison():
     print(f"  Saved: {path}")
 
 
-# ── Chart 5: Velocidade (ms/move) ────────────────────────────────────────────
+# ── Chart 5: Speed (ms/move) ─────────────────────────────────────────────────
 
 def chart_speed_comparison():
     if not reports:
@@ -386,7 +386,7 @@ def chart_speed_comparison():
     print(f"  Saved: {path}")
 
 
-# ── Chart 6: Tempo de treinamento vs performance ─────────────────────────────
+# ── Chart 6: Training time vs performance ────────────────────────────────────
 
 def chart_training_time_vs_performance():
     fig, ax = plt.subplots(figsize=(8, 6))
@@ -420,7 +420,7 @@ def chart_training_time_vs_performance():
     print(f"  Saved: {path}")
 
 
-# ── Chart 7: Análise dos relatórios JSON ─────────────────────────────────────
+# ── Chart 7: JSON reports analysis ────────────────────────────────────────────
 
 def chart_reports_analysis():
     if not reports:
@@ -476,7 +476,7 @@ def chart_reports_analysis():
     print(f"  Saved: {path}")
 
 
-# ── Chart 8: Comparação Stage 1 (1-ply) vs Stage 2 (3-ply) ──────────────────
+# ── Chart 8: Stage 1 (1-ply) vs Stage 2 (3-ply) comparison ──────────────────
 
 def parse_log_with_stages(filepath):
     """Parse the main ntuple log splitting into Stage 1 (1-ply) and Stage 2 (3-ply)."""
@@ -572,7 +572,7 @@ def chart_stage_comparison():
     print(f"  Saved: {path}")
 
 
-# ── Executar todos os gráficos ────────────────────────────────────────────────
+# ── Run all charts ────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     print("\n" + "=" * 60)

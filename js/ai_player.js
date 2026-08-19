@@ -1,7 +1,7 @@
 /**
- * AI Player - Integra os agentes (DQN e Expectimax) com o jogo 2048 no browser.
- * Conecta ao servidor Python (porta 8081) para obter as jogadas.
- * Salva relatório JSON ao final de cada partida.
+ * AI Player - Integrates the agents (DQN and Expectimax) with the 2048 game in the browser.
+ * Connects to the Python server (port 8081) to get moves.
+ * Saves a JSON report at the end of each game.
  */
 
 (function () {
@@ -17,10 +17,10 @@
   };
   var agentIndex = 0;
   var moveCount = 0;
-  var moveHistory = [];  // histórico de jogadas para o relatório
+  var moveHistory = [];  // move history for the report
   var gameStartTime = 0;
 
-  // Extrai o grid como array 2D [row][col] para o backend Python
+  // Extracts the grid as a 2D array [row][col] for the Python backend
   function extractGrid() {
     var gm = window.gameManager;
     if (!gm || !gm.grid) return null;
@@ -37,7 +37,7 @@
     return grid;
   }
 
-  // Pede a próxima jogada ao servidor
+  // Requests the next move from the server
   function requestMove(grid, callback) {
     var xhr = new XMLHttpRequest();
     xhr.open("POST", AI_SERVER + "/move", true);
@@ -48,17 +48,17 @@
           var data = JSON.parse(xhr.responseText);
           callback(null, data);
         } else {
-          callback("Servidor IA não disponível. Inicie: python ai/server.py");
+          callback("AI server unavailable. Start: python ai/server.py");
         }
       }
     };
     xhr.onerror = function () {
-      callback("Servidor IA não disponível. Inicie: python ai/server.py");
+      callback("AI server unavailable. Start: python ai/server.py");
     };
     xhr.send(JSON.stringify({ grid: grid, agent: aiAgent }));
   }
 
-  // Envia relatório ao servidor
+  // Sends report to the server
   function sendReport(won) {
     var gm = window.gameManager;
     if (!gm) return;
@@ -81,7 +81,7 @@
     xhr.send(JSON.stringify(report));
   }
 
-  // Loop principal da IA
+  // Main AI loop
   function aiStep() {
     if (!aiPlaying) return;
 
@@ -93,7 +93,7 @@
       updateButton();
       var won = gm.won;
       var statusMsg = (won ? "WIN! " : "Game Over! ") +
-        "Score: " + gm.score + " | Max: " + getMaxTile() + " | Jogadas: " + moveCount;
+        "Score: " + gm.score + " | Max: " + getMaxTile() + " | Moves: " + moveCount;
       updateStatus(statusMsg);
       sendReport(won);
       return;
@@ -116,7 +116,7 @@
         var dirNames = ["up", "right", "down", "left"];
         var agentLabel = aiAgent.toUpperCase();
 
-        // Registra no histórico
+        // Record in history
         moveHistory.push({
           move: moveCount,
           action: dirNames[data.action],
@@ -126,11 +126,11 @@
         });
 
         updateStatus(
-          "[" + agentLabel + "] Jogada #" + moveCount + ": " + directions[data.action] +
+          "[" + agentLabel + "] Move #" + moveCount + ": " + directions[data.action] +
           " | Score: " + gm.score + " | Max: " + getMaxTile()
         );
 
-        // Dispara o movimento via InputManager
+        // Dispatches the move via InputManager
         gm.inputManager.emit("move", data.action);
       }
 
@@ -174,7 +174,7 @@
     aiPlaying = !aiPlaying;
     updateButton();
     if (aiPlaying) {
-      // Se o jogo acabou, reinicia
+      // If the game is over, restart
       var gm = window.gameManager;
       if (gm && (gm.over || (gm.won && !gm.keepPlaying))) {
         gm.inputManager.emit("restart");
@@ -183,10 +183,10 @@
       moveHistory = [];
       gameStartTime = Date.now();
       var label = aiAgent.toUpperCase();
-      updateStatus("[" + label + "] AI jogando...");
+      updateStatus("[" + label + "] AI playing...");
       aiStep();
     } else {
-      updateStatus("AI parada.");
+      updateStatus("AI stopped.");
     }
   }
 
@@ -203,7 +203,7 @@
     }
   }
 
-  // Injeta os controles na página
+  // Injects the controls into the page
   function injectUI() {
     var container = document.querySelector(".above-game");
     if (!container) return;
@@ -223,7 +223,7 @@
     document.getElementById("ai-agent-btn").addEventListener("click", switchAgent);
   }
 
-  // Injeta CSS
+  // Injects CSS
   function injectStyles() {
     var style = document.createElement("style");
     style.textContent =

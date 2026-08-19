@@ -1,8 +1,8 @@
 /*
- * N-Tuple Network player em C — shared library para o servidor Python.
- * Carrega pesos treinados e faz busca 1-ply ou 3-ply instantânea.
+ * N-Tuple Network player in C — shared library for the Python server.
+ * Loads trained weights and performs instant 1-ply or 3-ply search.
  *
- * Compilar: cc -O3 -shared -o ntuple_c.so ntuple_c.c -lm
+ * Compile: cc -O3 -shared -o ntuple_c.so ntuple_c.c -lm
  */
 
 #include <math.h>
@@ -84,7 +84,7 @@ static sym_t syms[MAX_TUPLES][8];
 static float *weights[MAX_TUPLES];
 static int loaded = 0;
 
-/* Tuplas base */
+/* Base tuples */
 static const int BASE_TUPLES[17][TUPLE_SIZE][2] = {
     {{0,0},{0,1},{0,2},{0,3},{1,0},{1,1}},
     {{1,0},{1,1},{1,2},{1,3},{2,0},{2,1}},
@@ -265,7 +265,7 @@ int ntuple_load(const char *path) {
     }
     fclose(f);
     loaded = 1;
-    printf("N-Tuple C: carregado %s (%d tuplas)\n", path, n);
+    printf("N-Tuple C: loaded %s (%d tuples)\n", path, n);
     return 1;
 }
 

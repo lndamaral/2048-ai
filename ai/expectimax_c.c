@@ -1,18 +1,18 @@
 /*
- * Expectimax engine otimizado para 2048.
+ * Optimized Expectimax engine for 2048.
  *
- * Board: uint64_t, 4 rows de 16 bits.
+ * Board: uint64_t, 4 rows of 16 bits.
  *   Row 0 = bits 0-15, Row 1 = bits 16-31, Row 2 = bits 32-47, Row 3 = bits 48-63
- *   Cada cell = 4 bits (nibble): 0=vazio, 1=2, 2=4, ..., 15=32768
+ *   Each cell = 4 bits (nibble): 0=empty, 1=2, 2=4, ..., 15=32768
  *
- * Otimizações:
- *   - Lookup tables para merge (65536 entradas)
- *   - Lookup tables para heurísticas por linha (65536 entradas x 4 posições)
+ * Optimizations:
+ *   - Lookup tables for merge (65536 entries)
+ *   - Lookup tables for per-row heuristics (65536 entries x 4 positions)
  *   - Transpose via bit manipulation O(1)
- *   - Transposition table com Zobrist hashing (4M entradas)
- *   - Iterative deepening com time budget
+ *   - Transposition table with Zobrist hashing (4M entries)
+ *   - Iterative deepening with time budget
  *
- * Compilar: cc -O3 -shared -o expectimax_c.so expectimax_c.c -lm
+ * Compile: cc -O3 -shared -o expectimax_c.so expectimax_c.c -lm
  */
 
 #include <math.h>
@@ -44,15 +44,15 @@ static row_t  move_right[65536];
 static int    move_score[65536];     /* score for left move */
 static int    move_score_r[65536];   /* score for right move */
 
-/* Heurística por linha: mono + smooth + empty + edge */
+/* Per-row heuristic: mono + smooth + empty + edge */
 static float  heur_row[65536];
 
-/* Snake pattern: 8 orientações × 4 posições de linha */
+/* Snake pattern: 8 orientations x 4 row positions */
 static float  snake_row[8][4][65536];
 
 static int    tables_built = 0;
 
-/* Snake weights para as 8 orientações (4 rotações × 2 espelhamentos) */
+/* Snake weights for the 8 orientations (4 rotations x 2 reflections) */
 static const float SNAKE_W[8][4][4] = {
     /* 0 */ {{32768,16384,8192,4096},{256,512,1024,2048},{128,64,32,16},{1,2,4,8}},
     /* 1 */ {{4096,8192,16384,32768},{2048,1024,512,256},{16,32,64,128},{8,4,2,1}},
@@ -64,7 +64,7 @@ static const float SNAKE_W[8][4][4] = {
     /* 7 */ {{4096,2048,16,8},{8192,1024,32,4},{16384,512,64,2},{32768,256,128,1}},
 };
 
-/* Pesos das heurísticas */
+/* Heuristic weights */
 #define W_EMPTY     270.0f
 #define W_MONO       47.0f
 #define W_SMOOTH     12.0f

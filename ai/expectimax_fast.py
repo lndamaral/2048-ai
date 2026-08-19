@@ -1,9 +1,9 @@
 """
-Agente Expectimax otimizado com Lookup Tables para 2048.
+Optimized Expectimax agent with Lookup Tables for 2048.
 
-Representação: cada célula = 4 bits (0=vazio, 1=2, 2=4, ..., 15=32768).
-Uma linha = 16 bits = 65536 estados possíveis.
-Tabelas pré-computadas para merge e heurísticas.
+Representation: each cell = 4 bits (0=empty, 1=2, 2=4, ..., 15=32768).
+One row = 16 bits = 65536 possible states.
+Pre-computed tables for merge and heuristics.
 """
 
 import numpy as np
@@ -11,7 +11,7 @@ import numpy as np
 # ─── Build Lookup Tables ────────────────────────────────────────
 
 def _build_all_tables():
-    """Constrói todas as lookup tables de uma vez."""
+    """Builds all lookup tables at once."""
     merge_left = np.zeros(65536, dtype=np.int32)
     merge_score = np.zeros(65536, dtype=np.int32)
     merge_right = np.zeros(65536, dtype=np.int32)
@@ -69,12 +69,12 @@ def _build_all_tables():
         merge_right[encoded] = right_enc
         merge_right_score[encoded] = score_r
 
-        # ── Heurística da linha ──
+        # ── Row heuristic ──
         h = 0.0
         empty = sum(1 for c in cells if c == 0)
         h += empty * 270.0
 
-        # Monotonicidade
+        # Monotonicity
         mono_inc = mono_dec = 0.0
         for j in range(3):
             if cells[j] > cells[j + 1]:
@@ -102,7 +102,7 @@ def _build_all_tables():
     return merge_left, merge_score, merge_right, merge_right_score, heur_score
 
 
-print("Construindo lookup tables...", end=" ", flush=True)
+print("Building lookup tables...", end=" ", flush=True)
 MERGE_LEFT, MERGE_SCORE, MERGE_RIGHT, MERGE_RIGHT_SCORE, HEUR_SCORE = _build_all_tables()
 print("OK")
 
@@ -111,7 +111,7 @@ print("OK")
 # Board = tuple of 4 ints (each row encoded as 16-bit)
 
 def grid_to_board(grid):
-    """Numpy grid 4x4 → board tuple."""
+    """Numpy grid 4x4 to board tuple."""
     rows = []
     for y in range(4):
         enc = 0
@@ -129,7 +129,7 @@ def grid_to_board(grid):
 
 
 def board_move(board, direction):
-    """Executa movimento. Retorna (new_board, score, moved)."""
+    """Executes a move. Returns (new_board, score, moved)."""
     r0, r1, r2, r3 = board
     total_score = 0
 
@@ -147,8 +147,8 @@ def board_move(board, direction):
         n3 = MERGE_RIGHT[r3]; total_score += MERGE_RIGHT_SCORE[r3]
         new_board = (int(n0), int(n1), int(n2), int(n3))
 
-    elif direction == 0:  # UP — transpõe, merge left, transpõe
-        # Extrai colunas
+    elif direction == 0:  # UP — transpose, merge left, transpose
+        # Extract columns
         cols = []
         for x in range(4):
             c = (((r0 >> (12 - x * 4)) & 0xF) << 12 |
@@ -158,7 +158,7 @@ def board_move(board, direction):
             merged = int(MERGE_LEFT[c])
             total_score += int(MERGE_SCORE[c])
             cols.append(merged)
-        # Reconstrói linhas a partir das colunas mergidas
+        # Rebuild rows from the merged columns
         n0 = (((cols[0] >> 12) & 0xF) << 12 | ((cols[1] >> 12) & 0xF) << 8 |
                ((cols[2] >> 12) & 0xF) << 4 | ((cols[3] >> 12) & 0xF))
         n1 = (((cols[0] >> 8) & 0xF) << 12 | ((cols[1] >> 8) & 0xF) << 8 |
@@ -169,7 +169,7 @@ def board_move(board, direction):
                (cols[2] & 0xF) << 4 | (cols[3] & 0xF))
         new_board = (n0, n1, n2, n3)
 
-    else:  # DOWN — transpõe, merge right, transpõe
+    else:  # DOWN — transpose, merge right, transpose
         cols = []
         for x in range(4):
             c = (((r0 >> (12 - x * 4)) & 0xF) << 12 |
@@ -194,11 +194,11 @@ def board_move(board, direction):
 
 
 def board_evaluate(board):
-    """Avalia o board usando lookup tables de heurísticas."""
+    """Evaluates the board using heuristic lookup tables."""
     r0, r1, r2, r3 = board
     score = HEUR_SCORE[r0] + HEUR_SCORE[r1] + HEUR_SCORE[r2] + HEUR_SCORE[r3]
 
-    # Colunas também
+    # Columns too
     for x in range(4):
         c = (((r0 >> (12 - x * 4)) & 0xF) << 12 |
              ((r1 >> (12 - x * 4)) & 0xF) << 8 |
@@ -226,7 +226,7 @@ def board_evaluate(board):
 
 
 def board_empty_cells(board):
-    """Retorna lista de (row_idx, shift) para células vazias."""
+    """Returns list of (row_idx, shift) for empty cells."""
     empties = []
     for y, row in enumerate(board):
         for shift in [12, 8, 4, 0]:
@@ -236,7 +236,7 @@ def board_empty_cells(board):
 
 
 def board_set_cell(board, y, shift, val_log2):
-    """Define uma célula. Retorna novo board."""
+    """Sets a cell. Returns a new board."""
     lst = list(board)
     lst[y] = lst[y] | (val_log2 << shift)
     return tuple(lst)
@@ -250,8 +250,8 @@ class ExpectimaxAgent:
         self.base_depth = depth
 
     def select_action(self, grid):
-        """Recebe numpy grid 4x4, retorna (ação, score)."""
-        self._cache = {}  # transposition table — limpa a cada jogada
+        """Receives numpy grid 4x4, returns (action, score)."""
+        self._cache = {}  # transposition table — cleared each move
         board = grid_to_board(grid)
         best_action = 0
         best_score = -1e18
@@ -274,7 +274,7 @@ class ExpectimaxAgent:
         if not empties:
             return board_evaluate(board)
 
-        # Menos vazias → avalia todas. Muitas vazias → amostra.
+        # Few empties -> evaluate all. Many empties -> sample.
         if len(empties) > 4:
             import random
             cells = random.sample(empties, 4)
