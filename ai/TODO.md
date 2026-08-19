@@ -6,6 +6,12 @@
 
 - [ ] **N-Tuple hybrid experiment**: Test adding a small snake pattern bonus to the N-Tuple evaluation during play (not training). Compare pure N-Tuple vs hybrid to see if the learned evaluation already captures the snake strategy or benefits from explicit guidance.
 
+- [ ] **Redefine success metrics**: 2048 tile is trivial — any basic strategy reaches it. The real benchmarks should be 4096+ rate (medium), 8192+ rate (hard), 16384+ rate (extreme). If after 5M episodes the N-Tuple still fails >5% of games before 2048, it's a strategy bug, not bad luck — diagnose why.
+
+- [ ] **"Easy loss" analysis**: After training, identify games where the agent failed to reach 2048. Replay them from the JSON reports and find the exact move where the strategy went wrong. These should be preventable losses.
+
+- [ ] **Inter-tuple correlation model**: Implement a small MLP (17 inputs → 64 → 1) on top of N-Tuple outputs to learn correlations between tuples. Potentially novel research — nobody has published this for 2048. Could close the gap from 97% to 99%+.
+
 - [ ] **Benchmark script**: Create a unified script that runs all 3 agents (1000+ games each) and produces a single comparison report with statistical analysis (mean, median, std dev, confidence intervals, score distributions, tile distributions).
 
 ## Training
