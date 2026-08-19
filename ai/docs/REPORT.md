@@ -1,8 +1,9 @@
-# Artificial Intelligence for the Game 2048: A Comparative Analysis of Machine Learning and Tree Search Approaches
+# AI Agents for 2048: A Comparative Study
+## Technical Report — DQN vs Expectimax vs N-Tuple Networks
 
-**Author**: Leonardo
+**Author**: Leonardo Amaral
 **Date**: August 2026
-**Technical Guidance**: Claude (Anthropic)
+**Powered by Claude Code**
 
 ---
 
@@ -706,7 +707,7 @@ ai/
 ├── server.py                # Flask API server (3 agents)
 ├── play.py                  # Terminal player
 ├── analysis.py              # Chart generation script
-├── TCC_AI_2048.md           # This document
+├── REPORT.md                # This document
 ├── EVOLUTION.md             # Brief evolution summary
 ├── checkpoints/             # Saved models
 ├── reports/                 # JSON game reports

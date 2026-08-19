@@ -112,7 +112,7 @@ Learned evaluation function + tree search. Combines the best of both worlds.
 │   ├── checkpoints/              # Model weights (not in git)
 │   ├── reports/                  # Game reports (JSON)
 │   └── docs/
-│       ├── TCC_AI_2048.md        # Summary document
+│       ├── REPORT.md             # Summary document
 │       └── EVOLUTION.md          # Evolution narrative
 └── style/                        # Game CSS (original)
 ```
@@ -169,4 +169,4 @@ Every game played in the browser automatically saves a JSON report to `ai/report
 ## License
 
 The original 2048 game is by [Gabriele Cirulli](https://github.com/gabrielecirulli/2048) under MIT License.
-AI components added by Leonardo.
+Author: Leonardo Amaral | Powered by Claude Code

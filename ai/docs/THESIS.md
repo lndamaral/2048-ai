@@ -1,15 +1,15 @@
-# Artificial Intelligence for the Game 2048: A Comparative Analysis of Deep Reinforcement Learning, Tree Search, and N-Tuple Networks
+# AI Agents for 2048: A Comparative Study
+## Technical Report — DQN vs Expectimax vs N-Tuple Networks
 
-**Author**: Leonardo
+**Author**: Leonardo Amaral
 **Date**: August 2026
-**Technical Guidance**: Claude (Anthropic)
-**Institution**: Final Year Project (TCC) -- Computer Science
+**Powered by Claude Code**
 
 ---
 
 ## Abstract
 
-This thesis presents the complete development, implementation, and comparative analysis of three fundamentally different artificial intelligence approaches for the puzzle game 2048: Deep Q-Networks (DQN), Expectimax tree search with hand-crafted heuristics, and N-Tuple Networks with Temporal Difference learning. Beginning from a naive deep reinforcement learning implementation that failed to reach even the titular 2048 tile after three hours of training, the project evolved iteratively through seven documented failures and dozens of design pivots into a state-of-the-art system capable of reaching the 2048 tile in over 87% of games, the 4096 tile in 55% of games, and the 8192 tile in 12% of games, all with a response time of 2.4 milliseconds per move.
+This report presents the complete development, implementation, and comparative analysis of three fundamentally different artificial intelligence approaches for the puzzle game 2048: Deep Q-Networks (DQN), Expectimax tree search with hand-crafted heuristics, and N-Tuple Networks with Temporal Difference learning. Beginning from a naive deep reinforcement learning implementation that failed to reach even the titular 2048 tile after three hours of training, the project evolved iteratively through seven documented failures and dozens of design pivots into a state-of-the-art system capable of reaching the 2048 tile in over 87% of games, the 4096 tile in 55% of games, and the 8192 tile in 12% of games, all with a response time of 2.4 milliseconds per move.
 
 The work documents every technical decision, its rationale, its outcome, and the lessons learned. It provides a detailed chronicle of the debugging sessions that uncovered critical bugs -- including a bit-layout transpose corruption that reduced the AI to scoring 44 points, a learning-rate overflow that sent weights to infinity, and a buffered-output issue that made training appear to hang. The project culminates in a web-based real-time visualization system where users can observe and compare the three agents playing live in the browser, with automated JSON reports saved for each completed game.
 
@@ -3210,6 +3210,6 @@ N-Tuple Episodio 12100/50000 | Tempo: 46394s
 
 ---
 
-*This document was prepared as a final year project (TCC) in Computer Science. All code, training data, and game reports are available in the project repository. The total development time was approximately two weeks, with the N-Tuple agent's training ongoing.*
+*All code, training data, and game reports are available in the project repository. The total development time was approximately two weeks, with the N-Tuple agent's training ongoing.*
 
-*Technical guidance was provided by Claude (Anthropic), who assisted with architectural decisions, debugging, and documentation.*
+*Powered by Claude Code, which assisted with architectural decisions, debugging, and documentation.*
