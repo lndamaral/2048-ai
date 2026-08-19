@@ -53,8 +53,9 @@ static const float SNAKE_W[8][4][4] = {
  * after the bitboard migration since move/scoring behavior is identical
  * but sampling may differ slightly.
  *
- * snake=0.95  empty=2.0  mono=1.0  smooth=0.1  corner=1.0
- * edge_mono=0.5  corner_penalty=0.5
+ * Calibrated weights (bitboard engine, 3-ply, 200 games):
+ * snake=0.0  empty=3.0  mono=0.5  smooth=0.0  corner=0.0
+ * merge=2.5  edge_mono=0.0
  */
 
 static float evaluate(board_t b) {
@@ -86,10 +87,10 @@ static float evaluate(board_t b) {
             }
         if (s > best_snake) best_snake = s;
     }
-    score += best_snake * 0.95f;
+    score += best_snake * 0.0f;  /* Calibration found snake hurts at 3-ply */
 
     /* 2. Empty cells */
-    score += (empty > 0) ? logf((float)empty + 1.0f) * 2.0f : 0;
+    score += (empty > 0) ? logf((float)empty + 1.0f) * 3.0f : 0;
 
     /* 3. Monotonicity (using log2 values) */
     float mono = 0;
@@ -110,7 +111,7 @@ static float evaluate(board_t b) {
         }
         mono -= (up < down) ? up : down;
     }
-    score += mono * 1.0f;
+    score += mono * 0.5f;
 
     /* 4. Smoothness */
     float smooth = 0;
@@ -123,35 +124,19 @@ static float evaluate(board_t b) {
             if (y < 3 && grid[y+1][x] > 0)
                 smooth -= fabsf(v - lg[y+1][x]);
         }
-    score += smooth * 0.1f;
+    score += smooth * 0.0f;  /* Calibration: smooth not helpful */
 
-    /* 5. Max tile in corner -- strong bonus/penalty */
-    int corners[4] = {grid[0][0], grid[0][3], grid[3][0], grid[3][3]};
-    int max_in_corner = 0;
-    for (int i = 0; i < 4; i++) {
-        if (corners[i] == max_val) { max_in_corner = 1; break; }
-    }
-    if (max_val > 0) {
-        float tile_val = (float)(1 << max_val);
-        if (max_in_corner)
-            score += tile_val * 1.0f;     /* bonus: reward corner placement */
-        else
-            score -= tile_val * 0.5f;     /* penalty: max tile not in corner */
-    }
-
-    /* 6. Edge monotonicity -- tiles along edges should decrease from corner */
-    float edge_mono = 0;
-    /* Top edge */
-    for (int x = 0; x < 3; x++) {
-        if (grid[0][x] > 0 && grid[0][x+1] > 0 && grid[0][x] >= grid[0][x+1])
-            edge_mono += (float)grid[0][x];
-    }
-    /* Left edge */
-    for (int y = 0; y < 3; y++) {
-        if (grid[y][0] > 0 && grid[y+1][0] > 0 && grid[y][0] >= grid[y+1][0])
-            edge_mono += (float)grid[y][0];
-    }
-    score += edge_mono * 0.5f;
+    /* 5. Merge potential -- bonus for adjacent equal tiles */
+    float merge_pot = 0;
+    for (int y = 0; y < 4; y++)
+        for (int x = 0; x < 4; x++) {
+            if (grid[y][x] == 0) continue;
+            if (x < 3 && grid[y][x] == grid[y][x+1])
+                merge_pot += (float)grid[y][x];
+            if (y < 3 && grid[y][x] == grid[y+1][x])
+                merge_pot += (float)grid[y][x];
+        }
+    score += merge_pot * 2.5f;
 
     return score;
 }

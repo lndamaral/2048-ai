@@ -1,0 +1,37 @@
+[TDL2048+] Using 4x6patt configuration (32 features)
+N-Tuple Training for 2048 (State-of-the-Art)
+Episodes: 1000000 | Tuples: 4 x 6-pos (TDL2048+) | Search: 1-ply
+TC: ON | Threads: 8 | LR: 0.100000 -> 0.001000
+TT size: 16777216 entries (384 MB)
+[Optimistic] Initialized 4 tables x 16777216 entries to 320000
+Logging per-episode data to logs/stage1.csv
+
+╔══════════════════════════════════════════════════════════╗
+║            TDL2048+ Training Configuration              ║
+╠══════════════════════════════════════════════════════════╣
+║ Optimistic Init:  ENABLED                                ║
+║   Init value:     320000                                 ║
+║   From checkpoint:no (init applied)                      ║
+║ Multistage:       ENABLED                                ║
+║   stage 0: start -> 8192 (LR x1.00)                      ║
+║   stage 1: 8192 -> 16384 (LR x0.50)                      ║
+║   stage 2: 16384 -> 32768 (LR x0.25)                     ║
+║ Carousel Shaping: ENABLED                                ║
+║   buffer=8192, use every 5 episodes                      ║
+║   save at tiles: 1024,2048,4096,8192                     ║
+║ Weight Promotion: ENABLED                                ║
+║ Redundant Enc:    disabled                               ║
+╚══════════════════════════════════════════════════════════╝
+
+
+============================================================
+N-Tuple Episode 100/1000000 | Time: 17s | 8 threads
+============================================================
+  Average score:  1392
+  Max tiles:    {32: 2, 64: 21, 128: 51, 256: 18}
+  2048+:        0x total
+  LR:           0.099954
+  Ep/s:         5.9
+  Moves:        UP=2.5% RIGHT=41.5% DOWN=54.3% LEFT=1.7%
+  Config:       OPT=ON MS=ON CR=ON TC=ON WP=ON RD=OFF depth=1-ply
+Saved checkpoints/ntuple_best.bin (768.0 MB)

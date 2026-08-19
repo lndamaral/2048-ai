@@ -236,7 +236,10 @@ static game_result_t play_game(const weights_t *w, int search_depth, unsigned in
 
     int total_score = 0, moves = 0;
 
-    while (!board_game_over(b)) {
+    /* Max moves limit prevents infinite loops with weak heuristics */
+    int max_moves = 5000;
+
+    while (!board_game_over(b) && moves < max_moves) {
         int best_dir = -1;
         float best_val = -1e18f;
 

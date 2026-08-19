@@ -41,7 +41,7 @@
 
 /* ─── N-Tuple Network Constants ───────────────────────────────── */
 
-#define N_TUPLES      17
+#define MAX_TUPLES    20
 #define TUPLE_SIZE    6
 #define N_SYMMETRIES  8
 #define LUT_SIZE      16777216  /* 16^6 = 2^24 */
@@ -50,7 +50,7 @@
 #define SUB_TUPLE_SIZE    5
 #define SUB_LUT_SIZE      1048576  /* 16^5 = 2^20 */
 #define SUBS_PER_TUPLE    6        /* C(6,5) = 6 sub-tuples per base tuple */
-#define MAX_SUB_TUPLES    (N_TUPLES * SUBS_PER_TUPLE)  /* 17 * 6 = 102 */
+#define MAX_SUB_TUPLES    (MAX_TUPLES * SUBS_PER_TUPLE)
 
 /* Transposition table for search (configurable, default 2^24 = 16M) */
 #ifndef TT_SIZE_LOG2
@@ -59,9 +59,28 @@
 #define TT_SIZE       (1 << TT_SIZE_LOG2)
 #define TT_MASK       (TT_SIZE - 1)
 
-/* ─── 17 Base Tuples (6 positions each) ───────────────────────── */
+/* ─── Tuple Configurations ──────────────────────────────────────── */
 
-static const int BASE_TUPLES[N_TUPLES][TUPLE_SIZE][2] = {
+/*
+ * TDL2048+ configuration: 4 tuples × 8 symmetries = 32 features.
+ * Exact patterns from moporgic/TDL2048 4x6patt:
+ *   012345, 456789, 012456, 45689a (hex board positions)
+ * This is the proven state-of-the-art configuration.
+ * Use --tdl2048 flag to select this.
+ */
+static const int TDL2048_TUPLES[4][TUPLE_SIZE][2] = {
+    {{0,0},{0,1},{0,2},{0,3},{1,0},{1,1}},  /* 012345 */
+    {{1,0},{1,1},{1,2},{1,3},{2,0},{2,1}},  /* 456789 */
+    {{0,0},{0,1},{0,2},{1,0},{1,1},{1,2}},  /* 012456 */
+    {{1,0},{1,1},{1,2},{2,0},{2,1},{2,2}},  /* 45689a */
+};
+
+/*
+ * Extended configuration: 17 tuples × 8 symmetries = ~136 features.
+ * More spatial coverage but requires different LR tuning.
+ * This is the default configuration.
+ */
+static const int EXTENDED_TUPLES[17][TUPLE_SIZE][2] = {
     /* Row-based 2x3 blocks */
     {{0,0},{0,1},{0,2},{0,3},{1,0},{1,1}},
     {{1,0},{1,1},{1,2},{1,3},{2,0},{2,1}},
@@ -86,6 +105,11 @@ static const int BASE_TUPLES[N_TUPLES][TUPLE_SIZE][2] = {
     {{0,2},{0,3},{1,1},{1,2},{2,0},{2,1}},
 };
 
+/* ─── Active Tuple Configuration ───────────────────────────────── */
+
+static int n_tuples = 17;
+static const int (*active_tuples)[TUPLE_SIZE][2] = EXTENDED_TUPLES;
+
 /* ─── Symmetry Definitions ────────────────────────────────────── */
 
 typedef struct { int pos[TUPLE_SIZE][2]; } sym_t;
@@ -93,11 +117,11 @@ typedef struct { int pos[SUB_TUPLE_SIZE][2]; } sym5_t;
 
 typedef struct {
     int n_base;
-    int n_sym[N_TUPLES];
-    sym_t syms[N_TUPLES][N_SYMMETRIES];
-    float *weights[N_TUPLES];
-    float *tc_abs[N_TUPLES];
-    float *tc_sum[N_TUPLES];
+    int n_sym[MAX_TUPLES];
+    sym_t syms[MAX_TUPLES][N_SYMMETRIES];
+    float *weights[MAX_TUPLES];
+    float *tc_abs[MAX_TUPLES];
+    float *tc_sum[MAX_TUPLES];
     int use_tc;
 
     /* Redundant encoding: 5-position sub-tuples derived from each 6-tuple */
@@ -117,7 +141,7 @@ static void generate_symmetries(ntuple_net_t *net, int t) {
     int cands[8][TUPLE_SIZE][2];
     int nc = 0;
 
-    memcpy(cur, BASE_TUPLES[t], sizeof(cur));
+    memcpy(cur, active_tuples[t], sizeof(cur));
 
     for (int rot = 0; rot < 4; rot++) {
         /* Current orientation */
@@ -378,8 +402,8 @@ static void net_update(ntuple_net_t *net, board_t b, float delta, float base_lr,
     float lr = base_lr;
     if (cfg) lr = multistage_get_lr(cfg, base_lr, max_tile_log2);
 
-    /* Distributed LR: divide by number of active features */
-    float dist_lr = lr / (float)n_active;
+    /* Direct LR per weight (matches Szubert's proven approach) */
+    float dist_lr = lr;
 
     if (!net->use_tc) {
         float adj = dist_lr * delta;
@@ -441,13 +465,13 @@ static void net_update(ntuple_net_t *net, board_t b, float delta, float base_lr,
 /* ─── Network Init / Free ─────────────────────────────────────── */
 
 static void net_init(ntuple_net_t *net, int use_tc, int use_redundant) {
-    net->n_base = N_TUPLES;
+    net->n_base = n_tuples;
     net->use_tc = use_tc;
     net->use_redundant = use_redundant;
     net->n_sub_tuples = 0;
     net->sub_tuple_size = SUB_TUPLE_SIZE;
 
-    for (int t = 0; t < N_TUPLES; t++) {
+    for (int t = 0; t < n_tuples; t++) {
         net->weights[t] = (float *)calloc(LUT_SIZE, sizeof(float));
         if (!net->weights[t]) { fprintf(stderr, "OOM allocating weights\n"); exit(1); }
         if (use_tc) {
@@ -466,15 +490,15 @@ static void net_init(ntuple_net_t *net, int use_tc, int use_redundant) {
     /* Initialize redundant 5-tuple sub-features */
     if (use_redundant) {
         int st_idx = 0;
-        for (int t = 0; t < N_TUPLES; t++) {
+        for (int t = 0; t < n_tuples; t++) {
             /* Generate C(6,5)=6 sub-tuples by omitting one position each */
             for (int omit = 0; omit < TUPLE_SIZE; omit++) {
                 int sub_pos[SUB_TUPLE_SIZE][2];
                 int k = 0;
                 for (int p = 0; p < TUPLE_SIZE; p++) {
                     if (p == omit) continue;
-                    sub_pos[k][0] = BASE_TUPLES[t][p][0];
-                    sub_pos[k][1] = BASE_TUPLES[t][p][1];
+                    sub_pos[k][0] = active_tuples[t][p][0];
+                    sub_pos[k][1] = active_tuples[t][p][1];
                     k++;
                 }
                 net->sub_weights[st_idx] = (float *)calloc(SUB_LUT_SIZE, sizeof(float));
@@ -1004,7 +1028,10 @@ static void *train_worker(void *arg) {
         game_score += (int)prev_reward;
 
         /* Main game loop: forward TD(0) afterstate learning */
-        while (!board_game_over(state)) {
+        int move_count = 0;
+        int max_moves = 3000; /* Safety limit — normal games are 500-2000 moves */
+        while (!board_game_over(state) && move_count < max_moves) {
+            move_count++;
             board_t curr_after;
             float curr_reward;
             action = select_best(&shared_net, state, &curr_after, &curr_reward,
@@ -1061,6 +1088,7 @@ episode_end:
         if (csv_file) {
             pthread_mutex_lock(&csv_mutex);
             fprintf(csv_file, "%d,%d,%d\n", ep, game_score, max_tile);
+            fflush(csv_file);
             pthread_mutex_unlock(&csv_mutex);
         }
     }
@@ -1086,7 +1114,7 @@ static void train(int episodes, const char *save_dir, int use_tc, int use_redund
     }
 
     /* Apply optimistic initialization (skipped if checkpoint loaded) */
-    config_apply_optimistic(&train_cfg, shared_net.weights, N_TUPLES, LUT_SIZE);
+    config_apply_optimistic(&train_cfg, shared_net.weights, n_tuples, LUT_SIZE);
 
     /* Apply optimistic init to sub-tuples as well */
     if (shared_net.use_redundant) {
@@ -1304,6 +1332,13 @@ int main(int argc, char **argv) {
             lr_start = (float)atof(argv[++i]);
         else if (strcmp(argv[i], "--lr-end") == 0 && i + 1 < argc)
             lr_end = (float)atof(argv[++i]);
+        else if (strcmp(argv[i], "--tdl2048") == 0) {
+            n_tuples = 4;
+            active_tuples = TDL2048_TUPLES;
+            lr_start = 0.1f;
+            lr_end = 0.001f;
+            printf("[TDL2048+] Using 4x6patt configuration (32 features)\n");
+        }
         else {
             fprintf(stderr, "Unknown argument: %s\n", argv[i]);
             fprintf(stderr, "Usage: %s [OPTIONS]\n", argv[0]);
@@ -1315,6 +1350,7 @@ int main(int argc, char **argv) {
             fprintf(stderr, "  --multistage       Enable multistage LR\n");
             fprintf(stderr, "  --carousel         Enable carousel shaping\n");
             fprintf(stderr, "  --weight-promotion Enable weight promotion across stages\n");
+            fprintf(stderr, "  --tdl2048          Use TDL2048+ 4x6patt configuration\n");
             fprintf(stderr, "  --redundant        Enable redundant 5-tuple sub-features\n");
             fprintf(stderr, "  --lr-start F       Starting LR (default: 0.01)\n");
             fprintf(stderr, "  --lr-end F         Ending LR (default: 0.0005)\n");
@@ -1341,8 +1377,10 @@ int main(int argc, char **argv) {
     }
 
     printf("N-Tuple Training for 2048 (State-of-the-Art)\n");
-    printf("Episodes: %d | Tuples: %d x %d-pos | Search: %d-ply\n",
-           episodes, N_TUPLES, TUPLE_SIZE, 1 + train_search_depth * 2);
+    printf("Episodes: %d | Tuples: %d x %d-pos (%s) | Search: %d-ply\n",
+           episodes, n_tuples, TUPLE_SIZE,
+           n_tuples == 4 ? "TDL2048+" : "extended",
+           1 + train_search_depth * 2);
     printf("TC: %s | Threads: %d | LR: %.6f -> %.6f\n",
            use_tc ? "ON" : "OFF", n_threads, lr_start, lr_end);
     printf("TT size: %d entries (%lu MB)\n",
