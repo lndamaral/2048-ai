@@ -38,6 +38,55 @@ def _is_valid_move(grid, direction):
     return g.is_valid_move(direction)
 
 
+def _attention_chance_node(grid, depth):
+    """CHANCE node for attention agent 3-ply search."""
+    empties = list(zip(*np.where(grid == 0)))
+    if not empties:
+        return attention_agent.evaluate(grid)
+
+    sample = empties if len(empties) <= 4 else [empties[i] for i in np.random.choice(len(empties), 4, replace=False)]
+    total = 0.0
+    for y, x in sample:
+        for tile_val, prob in [(2, 0.9), (4, 0.1)]:
+            g2 = grid.copy()
+            g2[y, x] = tile_val
+            if depth <= 0:
+                total += prob * attention_agent.evaluate(g2)
+            else:
+                total += prob * _attention_max_node(g2, depth)
+    return total / len(sample)
+
+
+def _attention_max_node(grid, depth):
+    """MAX node for attention agent 3-ply search."""
+    best = -1e18
+    any_moved = False
+    for d in range(4):
+        after, reward, moved = fast_move(grid, d)
+        if not moved:
+            continue
+        any_moved = True
+        v = reward + _attention_chance_node(after, depth - 1)
+        if v > best:
+            best = v
+    return attention_agent.evaluate(grid) if not any_moved else best
+
+
+def _attention_select_action(grid):
+    """Attention agent with 3-ply search."""
+    best_action = 0
+    best_value = -1e18
+    for d in range(4):
+        after, reward, moved = fast_move(grid, d)
+        if not moved:
+            continue
+        value = reward + _attention_chance_node(after, 0)  # depth=0 → 3-ply total
+        if value > best_value:
+            best_value = value
+            best_action = d
+    return best_action
+
+
 def _ntuple_select_action(grid):
     """N-Tuple search via C — instant 3-ply."""
     if ntuple_c_lib:
@@ -98,7 +147,7 @@ def get_move():
         if attention_agent is None:
             return jsonify({'action': -1, 'message': 'Attention model not loaded'})
 
-        action, score = attention_agent.select_action(grid)
+        action = _attention_select_action(grid)
         return jsonify({
             'action': action,
             'direction': direction_names[action],
