@@ -218,29 +218,19 @@ static float chance_node(const grid_t g, int depth) {
 
     if (ne == 0) return evaluate(g);
 
-    /* Sample up to 5 empty cells */
+    /* Evaluate ALL empty cells (no sampling — deterministic for reproducibility) */
     int sample_n = ne;
-    int indices[16];
-    for (int i = 0; i < 16; i++) indices[i] = i;
-    if (ne > 5) {
-        sample_n = 5;
-        for (int i = 0; i < sample_n; i++) {
-            int j = i + rand() % (ne - i);
-            int tmp = indices[i]; indices[i] = indices[j]; indices[j] = tmp;
-        }
-    }
 
     float total = 0;
     for (int i = 0; i < sample_n; i++) {
-        int idx = indices[i];
         grid_t g2;
 
         memcpy(g2, g, sizeof(grid_t));
-        g2[ey[idx]][ex[idx]] = 2;
+        g2[ey[i]][ex[i]] = 2;
         total += 0.9f * max_node(g2, depth);
 
         memcpy(g2, g, sizeof(grid_t));
-        g2[ey[idx]][ex[idx]] = 4;
+        g2[ey[i]][ex[i]] = 4;
         total += 0.1f * max_node(g2, depth);
     }
     return total / sample_n;
