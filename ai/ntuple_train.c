@@ -529,6 +529,7 @@ typedef struct {
     int local_scores[100];
     int local_tiles[100];
     int local_buf_idx;
+    long move_counts[4]; /* UP, RIGHT, DOWN, LEFT — for move distribution analysis */
 } thread_stats_t;
 
 static void *train_worker(void *arg) {
@@ -574,6 +575,7 @@ static void *train_worker(void *arg) {
             game_score += (int)curr_reward;
 
             grid_copy(prev_after, curr_after);
+            stats->move_counts[action]++;
         }
 
         float v_last = net_evaluate(&shared_net, prev_after);
@@ -684,6 +686,17 @@ static void train(int episodes, const char *save_dir, int use_tc, int n_threads,
             printf("  LR:           %f\n", shared_net.lr);
             printf("  Ep/s:         %.1f\n", (float)done / (elapsed > 0 ? elapsed : 1));
 
+            /* Move distribution */
+            long total_moves[4] = {0};
+            for (int t = 0; t < n_threads; t++)
+                for (int d = 0; d < 4; d++)
+                    total_moves[d] += stats[t].move_counts[d];
+            long sum_moves = total_moves[0]+total_moves[1]+total_moves[2]+total_moves[3];
+            if (sum_moves > 0)
+                printf("  Moves:        UP=%.1f%% RIGHT=%.1f%% DOWN=%.1f%% LEFT=%.1f%%\n",
+                    100.0*total_moves[0]/sum_moves, 100.0*total_moves[1]/sum_moves,
+                    100.0*total_moves[2]/sum_moves, 100.0*total_moves[3]/sum_moves);
+
             if (avg > best_avg) {
                 best_avg = avg;
                 net_save(&shared_net, path_best);
@@ -691,6 +704,14 @@ static void train(int episodes, const char *save_dir, int use_tc, int n_threads,
 
             if (current_100 % 1000 == 0) {
                 net_save(&shared_net, path_latest);
+            }
+
+            /* Save periodic checkpoint every 10k episodes for learning curve analysis */
+            if (current_100 % 10000 == 0) {
+                char path_periodic[512];
+                snprintf(path_periodic, sizeof(path_periodic),
+                         "%s/ntuple_ep%d.bin", save_dir, current_100);
+                net_save(&shared_net, path_periodic);
             }
         }
 
