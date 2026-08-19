@@ -18,6 +18,9 @@ ai/ntuple_train
 ai/checkpoints/*.pt
 ai/checkpoints/*.bin
 
+# Archived v1 data (pre-state-of-the-art implementation)
+ai/archive/
+
 # Training logs in root ai/ (active training output)
 ai/*.log
 
