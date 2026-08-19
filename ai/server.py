@@ -18,6 +18,7 @@ from dqn_agent import DQNAgent, encode_state
 from expectimax_native import ExpectimaxAgent
 from ntuple_agent import NTupleNetwork
 from expectimax_agent import fast_move
+from attention_ntuple import AttentionNTupleAgent
 import ctypes
 
 app = Flask(__name__)
@@ -27,6 +28,7 @@ dqn_agent = None
 expectimax_agent = ExpectimaxAgent(depth=3)
 ntuple_net = None
 ntuple_c_lib = None
+attention_agent = None
 
 
 def _is_valid_move(grid, direction):
@@ -92,6 +94,17 @@ def get_move():
             'agent': 'ntuple',
         })
 
+    elif agent_type == 'attention':
+        if attention_agent is None:
+            return jsonify({'action': -1, 'message': 'Attention model not loaded'})
+
+        action, score = attention_agent.select_action(grid)
+        return jsonify({
+            'action': action,
+            'direction': direction_names[action],
+            'agent': 'attention',
+        })
+
     else:  # expectimax
         action, depth_reached = expectimax_agent.select_action(grid)
         return jsonify({
@@ -154,7 +167,7 @@ def status():
 
 
 def main():
-    global dqn_agent, ntuple_net, ntuple_c_lib
+    global dqn_agent, ntuple_net, ntuple_c_lib, attention_agent
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--model', default='checkpoints/best.pt')
@@ -196,9 +209,20 @@ def main():
     else:
         print(f"N-Tuple not found — train with: ./ntuple_train --episodes 50000")
 
+    # Load Attention N-Tuple
+    attn_path = os.path.join(os.path.dirname(__file__), 'checkpoints', 'attention_best.pt')
+    if not os.path.exists(attn_path):
+        attn_path = os.path.join(os.path.dirname(__file__), 'checkpoints', 'attention_latest.pt')
+    if os.path.exists(attn_path) and os.path.exists(ntuple_path):
+        attention_agent = AttentionNTupleAgent(ntuple_path=ntuple_path)
+        attention_agent.load(attn_path)
+    else:
+        print("Attention N-Tuple not found — train with: python attention_ntuple.py")
+
     agents = ['Expectimax']
     if dqn_agent: agents.append(f'DQN ({dqn_agent.steps_done} steps)')
     if ntuple_net: agents.append('N-Tuple')
+    if attention_agent: agents.append('Attention N-Tuple')
 
     print(f"\nAI server running at http://localhost:{args.port}")
     print(f"Agents: {' + '.join(agents)}")

@@ -8,12 +8,13 @@
   var AI_SERVER = "http://localhost:8081";
   var aiPlaying = false;
   var aiSpeed = 0; // ms entre jogadas (0 = requestAnimationFrame)
-  var aiAgent = "expectimax"; // "expectimax", "dqn" ou "ntuple"
-  var agentList = ["expectimax", "dqn", "ntuple"];
+  var aiAgent = "expectimax"; // "expectimax", "dqn", "ntuple", "attention"
+  var agentList = ["expectimax", "dqn", "ntuple", "attention"];
   var agentLabels = {
     expectimax: "🧠 Expectimax",
     dqn: "🤖 DQN",
-    ntuple: "🏆 N-Tuple"
+    ntuple: "🏆 N-Tuple",
+    attention: "⚡ Attention"
   };
   var agentIndex = 0;
   var moveCount = 0;
@@ -199,6 +200,7 @@
       var cls = "ai-agent-btn";
       if (aiAgent === "dqn") cls += " ai-agent-dqn";
       else if (aiAgent === "ntuple") cls += " ai-agent-ntuple";
+      else if (aiAgent === "attention") cls += " ai-agent-attention";
       btn.className = cls;
     }
   }
@@ -242,6 +244,8 @@
       ".ai-agent-btn.ai-agent-dqn:hover { background: #f060a0; }" +
       ".ai-agent-btn.ai-agent-ntuple { background: #2ecc71; }" +
       ".ai-agent-btn.ai-agent-ntuple:hover { background: #40d87f; }" +
+      ".ai-agent-btn.ai-agent-attention { background: #9b59b6; }" +
+      ".ai-agent-btn.ai-agent-attention:hover { background: #ab69c6; }" +
       ".ai-status { margin-top: 6px; font-size: 13px; color: #776e65;" +
       "  min-height: 20px; font-weight: bold; }";
     document.head.appendChild(style);
