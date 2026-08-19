@@ -1,10 +1,12 @@
 /*
  * training_config.h — Advanced TDL2048+ training techniques
  *
- * Implements three state-of-the-art techniques from TDL2048+:
+ * Implements five state-of-the-art techniques from TDL2048+:
  *   1. Optimistic Initialization (--optimistic)
  *   2. Multistage Training with stage-aware LR (--multistage)
  *   3. Carousel Shaping with position replay (--carousel)
+ *   4. Weight Promotion across stages (--weight-promotion)
+ *   5. Redundant Encoding with 5-tuple sub-features (--redundant)
  *
  * Include this header in ntuple_train.c and call the appropriate
  * functions to integrate these techniques into the training loop.
@@ -90,6 +92,12 @@ typedef struct {
     int   carousel;              /* --carousel flag                     */
     carousel_buffer_t carousel_buf;
 
+    /* Weight promotion */
+    int   use_weight_promotion;  /* --weight-promotion flag             */
+
+    /* Redundant encoding (5-tuple sub-features) */
+    int   use_redundant;         /* --redundant flag                    */
+
     /* Tracking */
     int   loaded_from_checkpoint; /* set to 1 if weights came from file */
 } training_config_t;
@@ -125,6 +133,9 @@ static void config_init(training_config_t *cfg) {
     cfg->carousel_buf.head = 0;
     cfg->carousel_buf.count = 0;
     cfg->carousel_buf.use_interval = CAROUSEL_USE_INTERVAL;
+
+    cfg->use_weight_promotion = 0;
+    cfg->use_redundant = 0;
 
     cfg->loaded_from_checkpoint = 0;
 }
@@ -371,6 +382,14 @@ static void print_config(const training_config_t *cfg) {
         printf("║   %-54s ║\n", thresh);
     }
 
+    /* Weight promotion */
+    printf("║ Weight Promotion: %-38s ║\n",
+           cfg->use_weight_promotion ? "ENABLED" : "disabled");
+
+    /* Redundant encoding */
+    printf("║ Redundant Enc:    %-38s ║\n",
+           cfg->use_redundant ? "ENABLED" : "disabled");
+
     printf("╚══════════════════════════════════════════════════════════╝\n\n");
 }
 
@@ -388,6 +407,8 @@ static void print_config(const training_config_t *cfg) {
  *   --multistage          Enable multistage training
  *   --carousel            Enable carousel shaping
  *   --carousel-interval N Use saved position every N episodes (default 5)
+ *   --weight-promotion    Enable weight promotion across stages
+ *   --redundant           Enable redundant 5-tuple sub-features
  */
 static int config_parse_arg(training_config_t *cfg, int argc, char **argv,
                             int *i) {
@@ -409,6 +430,14 @@ static int config_parse_arg(training_config_t *cfg, int argc, char **argv,
     }
     if (strcmp(argv[*i], "--carousel-interval") == 0 && *i + 1 < argc) {
         cfg->carousel_buf.use_interval = atoi(argv[++(*i)]);
+        return 1;
+    }
+    if (strcmp(argv[*i], "--weight-promotion") == 0) {
+        cfg->use_weight_promotion = 1;
+        return 1;
+    }
+    if (strcmp(argv[*i], "--redundant") == 0) {
+        cfg->use_redundant = 1;
         return 1;
     }
     return 0;

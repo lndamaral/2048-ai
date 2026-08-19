@@ -1,8 +1,14 @@
 /*
- * Expectimax Heuristic Weight Auto-Calibrator.
+ * Expectimax Heuristic Weight Auto-Calibrator (bitboard version).
  *
+ * Uses engine_bitboard.h for all board operations and move lookup tables.
  * Runs hundreds of games with different weight combinations
  * and finds the optimal weights via hill climbing.
+ *
+ * Calibrated default weights (from previous engine):
+ *   snake=0.95  empty=2.0  mono=1.0  smooth=0.1  corner=1.0
+ *   merge=0.0  trapped=0.0
+ * NOTE: These defaults may need re-calibration after the bitboard migration.
  *
  * Compile: cc -O3 -o expectimax_calibrate expectimax_calibrate.c -lm -lpthread
  * Run:     ./expectimax_calibrate --games 200 --threads 8
@@ -18,107 +24,10 @@
 #include <stdatomic.h>
 #include <sys/time.h>
 
-/* ─── Game Engine ───────────────────────────────────────────── */
+#include "engine_bitboard.h"
 
-typedef int grid_t[4][4];
+/* ─── Snake pattern weights (8 orientations: 4 rotations x 2 reflections) ── */
 
-static void grid_clear(grid_t g) { memset(g, 0, sizeof(grid_t)); }
-static void grid_copy(grid_t dst, const grid_t src) { memcpy(dst, src, sizeof(grid_t)); }
-
-static inline int trand(unsigned int *seed) {
-    *seed = *seed * 1103515245 + 12345;
-    return (*seed >> 16) & 0x7FFF;
-}
-
-static void grid_add_random(grid_t g, unsigned int *seed) {
-    int ey[16], ex[16], n = 0;
-    for (int y = 0; y < 4; y++)
-        for (int x = 0; x < 4; x++)
-            if (g[y][x] == 0) { ey[n] = y; ex[n] = x; n++; }
-    if (n == 0) return;
-    int idx = trand(seed) % n;
-    g[ey[idx]][ex[idx]] = (trand(seed) % 10 < 9) ? 2 : 4;
-}
-
-static int merge_line(int *line) {
-    int tmp[4] = {0}, pos = 0, score = 0;
-    for (int i = 0; i < 4; i++)
-        if (line[i]) tmp[pos++] = line[i];
-    int result[4] = {0};
-    pos = 0;
-    for (int i = 0; i < 4 && tmp[i]; i++) {
-        if (i + 1 < 4 && tmp[i] == tmp[i+1]) {
-            result[pos++] = tmp[i] * 2;
-            score += tmp[i] * 2;
-            i++;
-        } else {
-            result[pos++] = tmp[i];
-        }
-    }
-    memcpy(line, result, 4 * sizeof(int));
-    return score;
-}
-
-static int grid_move(grid_t after, const grid_t g, int dir, int *moved) {
-    grid_copy(after, g);
-    int score = 0, line[4];
-    if (dir == 3) {
-        for (int y = 0; y < 4; y++) {
-            for (int x = 0; x < 4; x++) line[x] = after[y][x];
-            score += merge_line(line);
-            for (int x = 0; x < 4; x++) after[y][x] = line[x];
-        }
-    } else if (dir == 1) {
-        for (int y = 0; y < 4; y++) {
-            for (int x = 0; x < 4; x++) line[x] = after[y][3-x];
-            score += merge_line(line);
-            for (int x = 0; x < 4; x++) after[y][3-x] = line[x];
-        }
-    } else if (dir == 0) {
-        for (int x = 0; x < 4; x++) {
-            for (int y = 0; y < 4; y++) line[y] = after[y][x];
-            score += merge_line(line);
-            for (int y = 0; y < 4; y++) after[y][x] = line[y];
-        }
-    } else {
-        for (int x = 0; x < 4; x++) {
-            for (int y = 0; y < 4; y++) line[y] = after[3-y][x];
-            score += merge_line(line);
-            for (int y = 0; y < 4; y++) after[3-y][x] = line[y];
-        }
-    }
-    *moved = (memcmp(after, g, sizeof(grid_t)) != 0);
-    return score;
-}
-
-static int grid_game_over(const grid_t g) {
-    for (int y = 0; y < 4; y++)
-        for (int x = 0; x < 4; x++) {
-            if (g[y][x] == 0) return 0;
-            if (x < 3 && g[y][x] == g[y][x+1]) return 0;
-            if (y < 3 && g[y][x] == g[y+1][x]) return 0;
-        }
-    return 1;
-}
-
-static int grid_max_tile(const grid_t g) {
-    int m = 0;
-    for (int y = 0; y < 4; y++)
-        for (int x = 0; x < 4; x++)
-            if (g[y][x] > m) m = g[y][x];
-    return m;
-}
-
-static int to_log2(int val) {
-    if (val <= 0) return 0;
-    int l = 0;
-    while (val > 1) { val >>= 1; l++; }
-    return l;
-}
-
-/* ─── Heuristic Evaluation with Tunable Weights ──────────── */
-
-/* Snake weights */
 static const float SNAKE_W[8][4][4] = {
     {{32768,16384,8192,4096},{256,512,1024,2048},{128,64,32,16},{1,2,4,8}},
     {{4096,8192,16384,32768},{2048,1024,512,256},{16,32,64,128},{8,4,2,1}},
@@ -130,6 +39,8 @@ static const float SNAKE_W[8][4][4] = {
     {{4096,2048,16,8},{8192,1024,32,4},{16384,512,64,2},{32768,256,128,1}},
 };
 
+/* ─── Heuristic Evaluation with Tunable Weights ──────────── */
+
 typedef struct {
     float w_snake;
     float w_empty;
@@ -140,7 +51,8 @@ typedef struct {
     float w_trapped;
 } weights_t;
 
-static float evaluate(const grid_t g, const weights_t *w) {
+static float evaluate(board_t b, const weights_t *w) {
+    /* Extract nibble values to compute heuristics */
     int grid[4][4];
     float lg[4][4];
     int empty = 0;
@@ -148,21 +60,24 @@ static float evaluate(const grid_t g, const weights_t *w) {
 
     for (int y = 0; y < 4; y++)
         for (int x = 0; x < 4; x++) {
-            grid[y][x] = to_log2(g[y][x]);
-            lg[y][x] = (float)grid[y][x];
-            if (g[y][x] == 0) empty++;
-            if (grid[y][x] > max_val) max_val = grid[y][x];
+            int v = board_get(b, y, x);
+            grid[y][x] = v;
+            lg[y][x] = (float)v;
+            if (v == 0) empty++;
+            if (v > max_val) max_val = v;
         }
 
     float score = 0;
 
-    /* 1. Snake pattern */
+    /* 1. Snake pattern -- using actual tile values */
     float best_snake = -1e18f;
     for (int o = 0; o < 8; o++) {
         float s = 0;
         for (int y = 0; y < 4; y++)
-            for (int x = 0; x < 4; x++)
-                s += (float)g[y][x] * SNAKE_W[o][y][x];
+            for (int x = 0; x < 4; x++) {
+                float tile_val = (grid[y][x] > 0) ? (float)(1 << grid[y][x]) : 0;
+                s += tile_val * SNAKE_W[o][y][x];
+            }
         if (s > best_snake) best_snake = s;
     }
     score += best_snake * w->w_snake;
@@ -212,7 +127,7 @@ static float evaluate(const grid_t g, const weights_t *w) {
         }
     }
 
-    /* 6. Merge potential (NEW) — bonus for adjacent equal tiles */
+    /* 6. Merge potential -- bonus for adjacent equal tiles */
     float merge_pot = 0;
     for (int y = 0; y < 4; y++)
         for (int x = 0; x < 4; x++) {
@@ -224,7 +139,7 @@ static float evaluate(const grid_t g, const weights_t *w) {
         }
     score += merge_pot * w->w_merge_potential;
 
-    /* 7. Trapped tile penalty (NEW) — penalize large tiles surrounded by much smaller ones */
+    /* 7. Trapped tile penalty -- penalize large tiles surrounded by much smaller ones */
     float trapped = 0;
     for (int y = 0; y < 4; y++)
         for (int x = 0; x < 4; x++) {
@@ -251,31 +166,33 @@ static float evaluate(const grid_t g, const weights_t *w) {
 
 /* ─── Expectimax Search ─────────────────────────────────────── */
 
-static float chance_node(const grid_t g, int depth, const weights_t *w, unsigned int *seed);
+static float chance_node(board_t b, int depth, const weights_t *w, unsigned int *seed);
 
-static float max_node(const grid_t g, int depth, const weights_t *w, unsigned int *seed) {
+static float max_node(board_t b, int depth, const weights_t *w, unsigned int *seed) {
     float best = -1e18f;
     int any = 0;
     for (int d = 0; d < 4; d++) {
-        grid_t after;
-        int moved;
-        int reward = grid_move(after, g, d, &moved);
-        if (!moved) continue;
+        int mscore;
+        board_t nb = do_move(b, d, &mscore, NULL);
+        if (nb == b) continue;
         any = 1;
         float v = (depth <= 0)
-            ? (float)reward + evaluate(after, w)
-            : (float)reward + chance_node(after, depth - 1, w, seed);
+            ? (float)mscore + evaluate(nb, w)
+            : (float)mscore + chance_node(nb, depth - 1, w, seed);
         if (v > best) best = v;
     }
-    return any ? best : evaluate(g, w);
+    return any ? best : evaluate(b, w);
 }
 
-static float chance_node(const grid_t g, int depth, const weights_t *w, unsigned int *seed) {
-    int ey[16], ex[16], ne = 0;
-    for (int y = 0; y < 4; y++)
-        for (int x = 0; x < 4; x++)
-            if (g[y][x] == 0) { ey[ne] = y; ex[ne] = x; ne++; }
-    if (ne == 0) return evaluate(g, w);
+static float chance_node(board_t b, int depth, const weights_t *w, unsigned int *seed) {
+    /* Find empty cells by scanning nibbles */
+    int positions[16];
+    int ne = 0;
+    for (int i = 0; i < 16; i++) {
+        if (((b >> (i * 4)) & 0xF) == 0)
+            positions[ne++] = i;
+    }
+    if (ne == 0) return evaluate(b, w);
 
     int sn = ne;
     int idx[16];
@@ -290,14 +207,16 @@ static float chance_node(const grid_t g, int depth, const weights_t *w, unsigned
 
     float total = 0;
     for (int i = 0; i < sn; i++) {
-        int ii = idx[i];
-        grid_t g2;
-        grid_copy(g2, g);
-        g2[ey[ii]][ex[ii]] = 2;
-        total += 0.9f * max_node(g2, depth, w, seed);
-        grid_copy(g2, g);
-        g2[ey[ii]][ex[ii]] = 4;
-        total += 0.1f * max_node(g2, depth, w, seed);
+        int pos = positions[idx[i]];
+        int shift = pos * 4;
+
+        /* tile=2 (log2=1), prob=0.9 */
+        board_t b2 = b | ((uint64_t)1 << shift);
+        total += 0.9f * max_node(b2, depth, w, seed);
+
+        /* tile=4 (log2=2), prob=0.1 */
+        board_t b4 = b | ((uint64_t)2 << shift);
+        total += 0.1f * max_node(b4, depth, w, seed);
     }
     return total / sn;
 }
@@ -311,25 +230,23 @@ typedef struct {
 } game_result_t;
 
 static game_result_t play_game(const weights_t *w, int search_depth, unsigned int *seed) {
-    grid_t state;
-    grid_clear(state);
-    grid_add_random(state, seed);
-    grid_add_random(state, seed);
+    board_t b = 0;
+    b = board_add_random(b, seed);
+    b = board_add_random(b, seed);
 
     int total_score = 0, moves = 0;
 
-    while (!grid_game_over(state)) {
+    while (!board_game_over(b)) {
         int best_dir = -1;
         float best_val = -1e18f;
 
         for (int d = 0; d < 4; d++) {
-            grid_t after;
-            int moved;
-            int reward = grid_move(after, state, d, &moved);
-            if (!moved) continue;
+            int mscore;
+            board_t nb = do_move(b, d, &mscore, NULL);
+            if (nb == b) continue;
             float v = (search_depth <= 0)
-                ? (float)reward + evaluate(after, w)
-                : (float)reward + chance_node(after, search_depth - 1, w, seed);
+                ? (float)mscore + evaluate(nb, w)
+                : (float)mscore + chance_node(nb, search_depth - 1, w, seed);
             if (v > best_val) {
                 best_val = v;
                 best_dir = d;
@@ -338,17 +255,16 @@ static game_result_t play_game(const weights_t *w, int search_depth, unsigned in
 
         if (best_dir == -1) break;
 
-        grid_t after;
-        int moved;
-        total_score += grid_move(after, state, best_dir, &moved);
-        grid_copy(state, after);
-        grid_add_random(state, seed);
+        int mscore;
+        b = do_move(b, best_dir, &mscore, NULL);
+        total_score += mscore;
+        b = board_add_random(b, seed);
         moves++;
     }
 
     game_result_t r;
     r.score = total_score;
-    r.max_tile = grid_max_tile(state);
+    r.max_tile = board_max_tile(b);
     r.moves = moves;
     return r;
 }
@@ -421,10 +337,13 @@ static void print_weights(const char *label, const weights_t *w, float score, fl
 }
 
 static void calibrate(int n_games, int search_depth, int n_threads, int iterations) {
-    /* Start with current weights */
+    /*
+     * Start with calibrated defaults from previous engine.
+     * NOTE: These need re-calibration after the bitboard migration.
+     */
     weights_t best = {
-        .w_snake = 0.5f,
-        .w_empty = 2.7f,
+        .w_snake = 0.95f,
+        .w_empty = 2.0f,
         .w_mono = 1.0f,
         .w_smooth = 0.1f,
         .w_corner = 1.0f,
@@ -475,14 +394,14 @@ static void calibrate(int n_games, int search_depth, int n_threads, int iteratio
                     best_score = score_up;
                     best_win = win_up;
                     improved = 1;
-                    printf("  %s += %.2f → ", names[p], step);
+                    printf("  %s += %.2f -> ", names[p], step);
                     print_weights("BETTER", &best, best_score, best_win);
                 } else if (score_dn > best_score) {
                     *params[p] = (original - step > 0) ? original - step : 0;
                     best_score = score_dn;
                     best_win = win_dn;
                     improved = 1;
-                    printf("  %s -= %.2f → ", names[p], step);
+                    printf("  %s -= %.2f -> ", names[p], step);
                     print_weights("BETTER", &best, best_score, best_win);
                 } else {
                     *params[p] = original;
@@ -515,10 +434,11 @@ int main(int argc, char **argv) {
             n_threads = atoi(argv[++i]);
     }
 
+    build_move_tables();
     srand((unsigned)time(NULL));
     setbuf(stdout, NULL);
 
-    printf("Expectimax Heuristic Auto-Calibrator\n");
+    printf("Expectimax Heuristic Auto-Calibrator (bitboard engine)\n");
     printf("Games per eval: %d | Search: %d-ply | Threads: %d\n\n",
            n_games, 1 + search_depth * 2, n_threads);
 

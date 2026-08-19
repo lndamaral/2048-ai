@@ -12,6 +12,8 @@
  *   - Optimistic initialization (weights start at 320,000)
  *   - Multistage training (LR adjustment by game phase)
  *   - Carousel shaping (replay from saved positions)
+ *   - Weight promotion (copy weights when new high tile appears)
+ *   - Redundant encoding (5-tuple sub-features for generalization)
  *   - Tile downgrading (reuse weights for max_nibble > 15)
  *   - Configurable search depth (1/3/5-ply)
  *   - LR decay with gradient clipping
@@ -43,6 +45,12 @@
 #define TUPLE_SIZE    6
 #define N_SYMMETRIES  8
 #define LUT_SIZE      16777216  /* 16^6 = 2^24 */
+
+/* Redundant encoding: 5-tuple sub-features */
+#define SUB_TUPLE_SIZE    5
+#define SUB_LUT_SIZE      1048576  /* 16^5 = 2^20 */
+#define SUBS_PER_TUPLE    6        /* C(6,5) = 6 sub-tuples per base tuple */
+#define MAX_SUB_TUPLES    (N_TUPLES * SUBS_PER_TUPLE)  /* 17 * 6 = 102 */
 
 /* Transposition table for search (configurable, default 2^24 = 16M) */
 #ifndef TT_SIZE_LOG2
@@ -81,6 +89,7 @@ static const int BASE_TUPLES[N_TUPLES][TUPLE_SIZE][2] = {
 /* ─── Symmetry Definitions ────────────────────────────────────── */
 
 typedef struct { int pos[TUPLE_SIZE][2]; } sym_t;
+typedef struct { int pos[SUB_TUPLE_SIZE][2]; } sym5_t;
 
 typedef struct {
     int n_base;
@@ -90,6 +99,16 @@ typedef struct {
     float *tc_abs[N_TUPLES];
     float *tc_sum[N_TUPLES];
     int use_tc;
+
+    /* Redundant encoding: 5-position sub-tuples derived from each 6-tuple */
+    int use_redundant;
+    int n_sub_tuples;
+    int sub_tuple_size;   /* always SUB_TUPLE_SIZE (5) */
+    int n_sub_sym[MAX_SUB_TUPLES];
+    sym5_t sub_syms[MAX_SUB_TUPLES][N_SYMMETRIES];
+    float *sub_weights[MAX_SUB_TUPLES];
+    float *sub_tc_abs[MAX_SUB_TUPLES];
+    float *sub_tc_sum[MAX_SUB_TUPLES];
 } ntuple_net_t;
 
 /* Generate all unique symmetries (rotations + reflections) for tuple t */
@@ -153,6 +172,69 @@ static void generate_symmetries(ntuple_net_t *net, int t) {
     net->n_sym[t] = count;
 }
 
+/* Generate all unique symmetries for a 5-position sub-tuple */
+static void generate_sub_symmetries(ntuple_net_t *net, int st,
+                                    const int base[SUB_TUPLE_SIZE][2]) {
+    int cur[SUB_TUPLE_SIZE][2];
+    int cands[8][SUB_TUPLE_SIZE][2];
+    int nc = 0;
+
+    memcpy(cur, base, sizeof(int) * SUB_TUPLE_SIZE * 2);
+
+    for (int rot = 0; rot < 4; rot++) {
+        /* Current orientation */
+        memcpy(cands[nc++], cur, sizeof(int) * SUB_TUPLE_SIZE * 2);
+        /* Mirror (horizontal flip) */
+        for (int i = 0; i < SUB_TUPLE_SIZE; i++) {
+            cands[nc][i][0] = cur[i][0];
+            cands[nc][i][1] = 3 - cur[i][1];
+        }
+        nc++;
+        /* Rotate 90 degrees clockwise: (y, x) -> (x, 3-y) */
+        int tmp[SUB_TUPLE_SIZE][2];
+        for (int i = 0; i < SUB_TUPLE_SIZE; i++) {
+            tmp[i][0] = cur[i][1];
+            tmp[i][1] = 3 - cur[i][0];
+        }
+        memcpy(cur, tmp, sizeof(int) * SUB_TUPLE_SIZE * 2);
+    }
+
+    /* Deduplicate symmetries */
+    int count = 0;
+    for (int c = 0; c < nc; c++) {
+        int sorted[SUB_TUPLE_SIZE][2];
+        memcpy(sorted, cands[c], sizeof(sorted));
+        for (int i = 0; i < SUB_TUPLE_SIZE - 1; i++)
+            for (int j = i + 1; j < SUB_TUPLE_SIZE; j++)
+                if (sorted[i][0] > sorted[j][0] ||
+                    (sorted[i][0] == sorted[j][0] && sorted[i][1] > sorted[j][1])) {
+                    int ty = sorted[i][0], tx = sorted[i][1];
+                    sorted[i][0] = sorted[j][0]; sorted[i][1] = sorted[j][1];
+                    sorted[j][0] = ty; sorted[j][1] = tx;
+                }
+        int dup = 0;
+        for (int k = 0; k < count; k++) {
+            int s2[SUB_TUPLE_SIZE][2];
+            memcpy(s2, net->sub_syms[st][k].pos, sizeof(s2));
+            for (int i = 0; i < SUB_TUPLE_SIZE - 1; i++)
+                for (int j = i + 1; j < SUB_TUPLE_SIZE; j++)
+                    if (s2[i][0] > s2[j][0] ||
+                        (s2[i][0] == s2[j][0] && s2[i][1] > s2[j][1])) {
+                        int ty = s2[i][0], tx = s2[i][1];
+                        s2[i][0] = s2[j][0]; s2[i][1] = s2[j][1];
+                        s2[j][0] = ty; s2[j][1] = tx;
+                    }
+            if (memcmp(sorted, s2, sizeof(sorted)) == 0) { dup = 1; break; }
+        }
+        if (!dup) {
+            memcpy(net->sub_syms[st][count].pos, cands[c],
+                   sizeof(int) * SUB_TUPLE_SIZE * 2);
+            count++;
+        }
+    }
+    net->n_sub_sym[st] = count;
+}
+
 /* ─── Tuple Encoding (bitboard-native) ────────────────────────── */
 
 /*
@@ -162,6 +244,21 @@ static void generate_symmetries(ntuple_net_t *net, int t) {
 static inline int encode6_board(board_t b, const int pos[][2]) {
     int idx = 0;
     for (int i = 0; i < 6; i++) {
+        int y = pos[i][0], x = pos[i][1];
+        int shift = y * 16 + (3 - x) * 4;
+        int val = (int)((b >> shift) & 0xF);
+        idx = idx * 16 + val;
+    }
+    return idx;
+}
+
+/*
+ * Encode a 5-position sub-tuple directly from the bitboard representation.
+ * Each position yields a 4-bit nibble; the 5 nibbles form a 20-bit index.
+ */
+static inline int encode5_board(board_t b, const int pos[][2]) {
+    int idx = 0;
+    for (int i = 0; i < 5; i++) {
         int y = pos[i][0], x = pos[i][1];
         int shift = y * 16 + (3 - x) * 4;
         int val = (int)((b >> shift) & 0xF);
@@ -225,6 +322,18 @@ static float net_evaluate_ex(const ntuple_net_t *net, board_t b, int *n_active) 
             active++;
         }
     }
+
+    /* Redundant encoding: sum contributions from 5-tuple sub-features */
+    if (net->use_redundant) {
+        for (int st = 0; st < net->n_sub_tuples; st++) {
+            const float *w = net->sub_weights[st];
+            for (int s = 0; s < net->n_sub_sym[st]; s++) {
+                total += w[encode5_board(b, net->sub_syms[st][s].pos)];
+                active++;
+            }
+        }
+    }
+
     if (n_active) *n_active = active;
     return total;
 }
@@ -259,6 +368,10 @@ static void net_update(ntuple_net_t *net, board_t b, float delta, float base_lr,
     int n_active = 0;
     for (int t = 0; t < net->n_base; t++)
         n_active += net->n_sym[t];
+    if (net->use_redundant) {
+        for (int st = 0; st < net->n_sub_tuples; st++)
+            n_active += net->n_sub_sym[st];
+    }
     if (n_active < 1) n_active = 1;
 
     /* Multistage LR adjustment */
@@ -294,13 +407,46 @@ static void net_update(ntuple_net_t *net, board_t b, float delta, float base_lr,
             }
         }
     }
+
+    /* Redundant encoding: update 5-tuple sub-feature weights */
+    if (net->use_redundant) {
+        if (!net->use_tc) {
+            float adj = dist_lr * delta;
+            for (int st = 0; st < net->n_sub_tuples; st++) {
+                float *w = net->sub_weights[st];
+                for (int s = 0; s < net->n_sub_sym[st]; s++)
+                    w[encode5_board(b, net->sub_syms[st][s].pos)] += adj;
+            }
+        } else {
+            float abs_delta = fabsf(delta);
+            float decay = 0.9995f;
+            for (int st = 0; st < net->n_sub_tuples; st++) {
+                float *w = net->sub_weights[st];
+                float *ts = net->sub_tc_sum[st];
+                float *ta = net->sub_tc_abs[st];
+                for (int s = 0; s < net->n_sub_sym[st]; s++) {
+                    int idx = encode5_board(b, net->sub_syms[st][s].pos);
+                    ts[idx] = ts[idx] * decay + delta;
+                    ta[idx] = ta[idx] * decay + abs_delta;
+                    float ratio = (ta[idx] > 1e-6f)
+                        ? (fabsf(ts[idx]) / ta[idx])
+                        : 1.0f;
+                    w[idx] += dist_lr * ratio * delta;
+                }
+            }
+        }
+    }
 }
 
 /* ─── Network Init / Free ─────────────────────────────────────── */
 
-static void net_init(ntuple_net_t *net, int use_tc) {
+static void net_init(ntuple_net_t *net, int use_tc, int use_redundant) {
     net->n_base = N_TUPLES;
     net->use_tc = use_tc;
+    net->use_redundant = use_redundant;
+    net->n_sub_tuples = 0;
+    net->sub_tuple_size = SUB_TUPLE_SIZE;
+
     for (int t = 0; t < N_TUPLES; t++) {
         net->weights[t] = (float *)calloc(LUT_SIZE, sizeof(float));
         if (!net->weights[t]) { fprintf(stderr, "OOM allocating weights\n"); exit(1); }
@@ -316,6 +462,45 @@ static void net_init(ntuple_net_t *net, int use_tc) {
         }
         generate_symmetries(net, t);
     }
+
+    /* Initialize redundant 5-tuple sub-features */
+    if (use_redundant) {
+        int st_idx = 0;
+        for (int t = 0; t < N_TUPLES; t++) {
+            /* Generate C(6,5)=6 sub-tuples by omitting one position each */
+            for (int omit = 0; omit < TUPLE_SIZE; omit++) {
+                int sub_pos[SUB_TUPLE_SIZE][2];
+                int k = 0;
+                for (int p = 0; p < TUPLE_SIZE; p++) {
+                    if (p == omit) continue;
+                    sub_pos[k][0] = BASE_TUPLES[t][p][0];
+                    sub_pos[k][1] = BASE_TUPLES[t][p][1];
+                    k++;
+                }
+                net->sub_weights[st_idx] = (float *)calloc(SUB_LUT_SIZE, sizeof(float));
+                if (!net->sub_weights[st_idx]) {
+                    fprintf(stderr, "OOM allocating sub-tuple weights\n"); exit(1);
+                }
+                if (use_tc) {
+                    net->sub_tc_abs[st_idx] = (float *)calloc(SUB_LUT_SIZE, sizeof(float));
+                    net->sub_tc_sum[st_idx] = (float *)calloc(SUB_LUT_SIZE, sizeof(float));
+                    if (!net->sub_tc_abs[st_idx] || !net->sub_tc_sum[st_idx]) {
+                        fprintf(stderr, "OOM allocating sub-tuple TC tables\n"); exit(1);
+                    }
+                } else {
+                    net->sub_tc_abs[st_idx] = NULL;
+                    net->sub_tc_sum[st_idx] = NULL;
+                }
+                generate_sub_symmetries(net, st_idx, sub_pos);
+                st_idx++;
+            }
+        }
+        net->n_sub_tuples = st_idx;
+        printf("[Redundant] Initialized %d sub-tuples (%d-pos), "
+               "%.0f MB additional memory\n",
+               st_idx, SUB_TUPLE_SIZE,
+               (double)st_idx * SUB_LUT_SIZE * sizeof(float) / 1048576.0);
+    }
 }
 
 static void net_free(ntuple_net_t *net) {
@@ -323,6 +508,13 @@ static void net_free(ntuple_net_t *net) {
         free(net->weights[t]);
         if (net->tc_abs[t]) free(net->tc_abs[t]);
         if (net->tc_sum[t]) free(net->tc_sum[t]);
+    }
+    if (net->use_redundant) {
+        for (int st = 0; st < net->n_sub_tuples; st++) {
+            free(net->sub_weights[st]);
+            if (net->sub_tc_abs[st]) free(net->sub_tc_abs[st]);
+            if (net->sub_tc_sum[st]) free(net->sub_tc_sum[st]);
+        }
     }
 }
 
@@ -345,6 +537,26 @@ static void net_save(const ntuple_net_t *net, const char *path) {
         for (int t = 0; t < n; t++) {
             fwrite(net->tc_sum[t], sizeof(float), LUT_SIZE, f);
             fwrite(net->tc_abs[t], sizeof(float), LUT_SIZE, f);
+        }
+    }
+    /* Redundant sub-tuple weights with marker */
+    if (net->use_redundant) {
+        int marker = 0x5244; /* "RD" */
+        fwrite(&marker, sizeof(int), 1, f);
+        int nsub = net->n_sub_tuples;
+        fwrite(&nsub, sizeof(int), 1, f);
+        for (int st = 0; st < nsub; st++) {
+            int size = SUB_LUT_SIZE;
+            fwrite(&size, sizeof(int), 1, f);
+            fwrite(net->sub_weights[st], sizeof(float), size, f);
+        }
+        if (net->use_tc) {
+            int tc_marker = 0x5254; /* "RT" = redundant TC */
+            fwrite(&tc_marker, sizeof(int), 1, f);
+            for (int st = 0; st < nsub; st++) {
+                fwrite(net->sub_tc_sum[st], sizeof(float), SUB_LUT_SIZE, f);
+                fwrite(net->sub_tc_abs[st], sizeof(float), SUB_LUT_SIZE, f);
+            }
         }
     }
     fclose(f);
@@ -378,17 +590,60 @@ static int net_load(ntuple_net_t *net, const char *path) {
             fclose(f); return 0;
         }
     }
-    /* Try reading TC marker */
+    /* Try reading optional sections by marker */
     int marker = 0;
-    if (fread(&marker, sizeof(int), 1, f) == 1 && marker == 0x5443 && net->use_tc) {
-        for (int t = 0; t < n; t++) {
-            fread(net->tc_sum[t], sizeof(float), LUT_SIZE, f);
-            fread(net->tc_abs[t], sizeof(float), LUT_SIZE, f);
+    int loaded_tc = 0, loaded_rd = 0;
+
+    while (fread(&marker, sizeof(int), 1, f) == 1) {
+        if (marker == 0x5443 && net->use_tc) {
+            /* TC marker: load TC tables for main tuples */
+            for (int t = 0; t < n; t++) {
+                fread(net->tc_sum[t], sizeof(float), LUT_SIZE, f);
+                fread(net->tc_abs[t], sizeof(float), LUT_SIZE, f);
+            }
+            loaded_tc = 1;
+        } else if (marker == 0x5244 && net->use_redundant) {
+            /* RD marker: load redundant sub-tuple weights */
+            int nsub;
+            if (fread(&nsub, sizeof(int), 1, f) != 1) break;
+            if (nsub != net->n_sub_tuples) {
+                fprintf(stderr, "Warning: sub-tuple count mismatch %d vs %d, skipping\n",
+                        nsub, net->n_sub_tuples);
+                /* Skip past the data */
+                for (int st = 0; st < nsub; st++) {
+                    int size;
+                    if (fread(&size, sizeof(int), 1, f) != 1) break;
+                    fseek(f, (long)size * sizeof(float), SEEK_CUR);
+                }
+                continue;
+            }
+            for (int st = 0; st < nsub; st++) {
+                int size;
+                if (fread(&size, sizeof(int), 1, f) != 1) break;
+                if (size != SUB_LUT_SIZE) {
+                    fprintf(stderr, "Warning: sub-LUT size mismatch %d vs %d\n",
+                            size, SUB_LUT_SIZE);
+                    fseek(f, (long)size * sizeof(float), SEEK_CUR);
+                    continue;
+                }
+                fread(net->sub_weights[st], sizeof(float), size, f);
+            }
+            loaded_rd = 1;
+        } else if (marker == 0x5254 && net->use_redundant && net->use_tc) {
+            /* RT marker: load TC tables for sub-tuples */
+            for (int st = 0; st < net->n_sub_tuples; st++) {
+                fread(net->sub_tc_sum[st], sizeof(float), SUB_LUT_SIZE, f);
+                fread(net->sub_tc_abs[st], sizeof(float), SUB_LUT_SIZE, f);
+            }
+        } else {
+            /* Unknown marker, stop reading */
+            break;
         }
-        printf("Loaded %s (weights + TC)\n", path);
-    } else {
-        printf("Loaded %s (weights only)\n", path);
     }
+
+    printf("Loaded %s (weights%s%s)\n", path,
+           loaded_tc ? " + TC" : "",
+           loaded_rd ? " + redundant" : "");
     fclose(f);
     return 1;
 }
@@ -570,6 +825,94 @@ static int carousel_get_board(const training_config_t *cfg, board_t *b,
     return score;
 }
 
+/* ─── Weight Promotion ───────────────────────────────────────── */
+
+/*
+ * Promote weights when max tile crosses a new threshold during training.
+ * For each tuple and symmetry, LUT entries that contain new_max_nibble
+ * in any position are initialized by copying weights from the corresponding
+ * entry where that position has old_max_nibble instead.
+ * Only copies if the target entry is still at zero (initial value).
+ *
+ * This bootstraps evaluation of boards with the new high tile using
+ * knowledge learned about boards with the previous high tile.
+ */
+static void promote_weights(ntuple_net_t *net, int old_max_nibble, int new_max_nibble) {
+    if (new_max_nibble > 15 || old_max_nibble > 15) return;
+    if (new_max_nibble <= old_max_nibble) return;
+
+    int promoted_6 = 0;
+
+    /* Promote 6-tuple weights */
+    for (int t = 0; t < net->n_base; t++) {
+        float *w = net->weights[t];
+        /*
+         * Iterate over all LUT indices that have new_max_nibble in at least
+         * one position. For a 6-tuple, the index is encoded as:
+         *   idx = n0*16^5 + n1*16^4 + n2*16^3 + n3*16^2 + n4*16 + n5
+         * We scan all 16^6 entries and for each one that contains
+         * new_max_nibble, we compute the source index with old_max_nibble
+         * in those positions.
+         */
+        int stride[TUPLE_SIZE];
+        stride[TUPLE_SIZE - 1] = 1;
+        for (int p = TUPLE_SIZE - 2; p >= 0; p--)
+            stride[p] = stride[p + 1] * 16;
+
+        for (int idx = 0; idx < LUT_SIZE; idx++) {
+            /* Check if this index contains new_max_nibble in any position */
+            int has_new = 0;
+            int src_idx = idx;
+            int tmp = idx;
+            for (int p = 0; p < TUPLE_SIZE; p++) {
+                int nibble = tmp / stride[p];
+                tmp -= nibble * stride[p];
+                if (nibble == new_max_nibble) {
+                    has_new = 1;
+                    src_idx -= (new_max_nibble - old_max_nibble) * stride[p];
+                }
+            }
+            if (has_new && w[idx] == 0.0f && src_idx >= 0 && src_idx < LUT_SIZE) {
+                w[idx] = w[src_idx];
+                promoted_6++;
+            }
+        }
+    }
+
+    /* Promote 5-tuple sub-weights if redundant encoding is active */
+    int promoted_5 = 0;
+    if (net->use_redundant) {
+        for (int st = 0; st < net->n_sub_tuples; st++) {
+            float *w = net->sub_weights[st];
+            int sub_stride[SUB_TUPLE_SIZE];
+            sub_stride[SUB_TUPLE_SIZE - 1] = 1;
+            for (int p = SUB_TUPLE_SIZE - 2; p >= 0; p--)
+                sub_stride[p] = sub_stride[p + 1] * 16;
+
+            for (int idx = 0; idx < SUB_LUT_SIZE; idx++) {
+                int has_new = 0;
+                int src_idx = idx;
+                int tmp = idx;
+                for (int p = 0; p < SUB_TUPLE_SIZE; p++) {
+                    int nibble = tmp / sub_stride[p];
+                    tmp -= nibble * sub_stride[p];
+                    if (nibble == new_max_nibble) {
+                        has_new = 1;
+                        src_idx -= (new_max_nibble - old_max_nibble) * sub_stride[p];
+                    }
+                }
+                if (has_new && w[idx] == 0.0f && src_idx >= 0 && src_idx < SUB_LUT_SIZE) {
+                    w[idx] = w[src_idx];
+                    promoted_5++;
+                }
+            }
+        }
+    }
+
+    (void)promoted_6;
+    (void)promoted_5;
+}
+
 /* ─── Global Shared State ─────────────────────────────────────── */
 
 static ntuple_net_t shared_net;
@@ -683,10 +1026,15 @@ static void *train_worker(void *arg) {
             game_score += (int)curr_reward;
             prev_after = curr_after;
 
-            /* Carousel: save if max tile crossed a threshold */
+            /* Check if max tile crossed a threshold */
             int cur_max_nib = board_max_nibble(state);
             if (cur_max_nib > prev_max_nib) {
+                /* Carousel: save position at threshold */
                 carousel_check_save(&train_cfg, state, game_score);
+                /* Weight promotion: copy weights for the new tile value */
+                if (train_cfg.use_weight_promotion) {
+                    promote_weights(&shared_net, prev_max_nib, cur_max_nib);
+                }
                 prev_max_nib = cur_max_nib;
             }
         }
@@ -723,10 +1071,10 @@ episode_end:
 
 /* ─── Main Training Orchestrator ──────────────────────────────── */
 
-static void train(int episodes, const char *save_dir, int use_tc,
+static void train(int episodes, const char *save_dir, int use_tc, int use_redundant,
                   int n_threads, const char *csv_path) {
     /* Initialize network */
-    net_init(&shared_net, use_tc);
+    net_init(&shared_net, use_tc, train_cfg.use_redundant);
 
     char path_latest[512], path_best[512];
     snprintf(path_latest, sizeof(path_latest), "%s/ntuple_latest.bin", save_dir);
@@ -739,6 +1087,12 @@ static void train(int episodes, const char *save_dir, int use_tc,
 
     /* Apply optimistic initialization (skipped if checkpoint loaded) */
     config_apply_optimistic(&train_cfg, shared_net.weights, N_TUPLES, LUT_SIZE);
+
+    /* Apply optimistic init to sub-tuples as well */
+    if (shared_net.use_redundant) {
+        config_apply_optimistic(&train_cfg, shared_net.sub_weights,
+                                shared_net.n_sub_tuples, SUB_LUT_SIZE);
+    }
 
     /* Open CSV file for per-episode logging */
     if (csv_path) {
@@ -843,11 +1197,13 @@ static void train(int episodes, const char *save_dir, int use_tc,
             }
 
             /* Config summary line */
-            printf("  Config:       OPT=%s MS=%s CR=%s TC=%s depth=%d-ply\n",
+            printf("  Config:       OPT=%s MS=%s CR=%s TC=%s WP=%s RD=%s depth=%d-ply\n",
                    train_cfg.optimistic ? "ON" : "OFF",
                    train_cfg.multistage ? "ON" : "OFF",
                    train_cfg.carousel ? "ON" : "OFF",
                    shared_net.use_tc ? "ON" : "OFF",
+                   train_cfg.use_weight_promotion ? "ON" : "OFF",
+                   shared_net.use_redundant ? "ON" : "OFF",
                    1 + train_search_depth * 2);
 
             /* Save best model */
@@ -917,6 +1273,7 @@ int main(int argc, char **argv) {
     int episodes = 50000;
     const char *save_dir = "checkpoints";
     int use_tc = 0;
+    int use_redundant = 0;
     int n_threads = 1;
     const char *csv_path = NULL;
 
@@ -935,6 +1292,8 @@ int main(int argc, char **argv) {
             save_dir = argv[++i];
         else if (strcmp(argv[i], "--depth") == 0 && i + 1 < argc)
             train_search_depth = atoi(argv[++i]);
+        else if (strcmp(argv[i], "--redundant") == 0)
+            use_redundant = 1;
         else if (strcmp(argv[i], "--tc") == 0)
             use_tc = 1;
         else if (strcmp(argv[i], "--threads") == 0 && i + 1 < argc)
@@ -955,6 +1314,8 @@ int main(int argc, char **argv) {
             fprintf(stderr, "  --optimistic       Enable optimistic initialization\n");
             fprintf(stderr, "  --multistage       Enable multistage LR\n");
             fprintf(stderr, "  --carousel         Enable carousel shaping\n");
+            fprintf(stderr, "  --weight-promotion Enable weight promotion across stages\n");
+            fprintf(stderr, "  --redundant        Enable redundant 5-tuple sub-features\n");
             fprintf(stderr, "  --lr-start F       Starting LR (default: 0.01)\n");
             fprintf(stderr, "  --lr-end F         Ending LR (default: 0.0005)\n");
             fprintf(stderr, "  --log-csv PATH     Per-episode CSV log file\n");
@@ -991,7 +1352,7 @@ int main(int argc, char **argv) {
     build_move_tables();
 
     /* Run training */
-    train(episodes, save_dir, use_tc, n_threads, csv_path);
+    train(episodes, save_dir, use_tc, use_redundant, n_threads, csv_path);
 
     return 0;
 }

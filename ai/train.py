@@ -1,12 +1,14 @@
 """
-DQN Training Script for 2048 — Optimized Version.
+DQN Training Script for 2048 — Rainbow-style.
 
 Usage:
-    python ai/train.py [--episodes 50000] [--resume]
+    python ai/train.py [--episodes 50000] [--resume] [--no-distributional]
 
 Features:
 - Dueling DQN with Prioritized Replay
 - Noisy Networks for exploration
+- Quantile Regression DQN (distributional RL, enabled by default)
+- N-step returns
 - Improved reward shaping
 - Detailed logging every 100 episodes
 """
@@ -63,11 +65,11 @@ def shape_reward(reward, game, moved):
     return shaped
 
 
-def train(episodes=50000, resume=False):
+def train(episodes=50000, resume=False, distributional=True):
     save_dir = os.path.join(os.path.dirname(__file__), 'checkpoints')
     os.makedirs(save_dir, exist_ok=True)
 
-    agent = DQNAgent()
+    agent = DQNAgent(distributional=distributional)
 
     # Try to resume from checkpoint
     checkpoint_path = os.path.join(save_dir, 'dqn_latest.pt')
@@ -176,6 +178,12 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train DQN agent for 2048')
     parser.add_argument('--episodes', type=int, default=50000, help='Number of episodes')
     parser.add_argument('--resume', action='store_true', help='Resume from checkpoint')
+    parser.add_argument('--no-distributional', action='store_true',
+                        help='Disable QR-DQN (use standard Dueling DQN)')
     args = parser.parse_args()
 
-    train(episodes=args.episodes, resume=args.resume)
+    train(
+        episodes=args.episodes,
+        resume=args.resume,
+        distributional=not args.no_distributional,
+    )

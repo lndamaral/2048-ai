@@ -1,12 +1,14 @@
 """
-Deep Q-Network (DQN) Agent for the game 2048 — Optimized Version.
+Deep Q-Network (DQN) Agent for the game 2048 — Rainbow-style.
 
-Improvements over v1:
+Features:
 - Dueling DQN architecture (separates state value and action advantage)
 - Prioritized Experience Replay (samples surprising experiences more often)
 - Deeper network with residual connections
 - Noisy linear layers for exploration (replaces epsilon-greedy)
 - Better state encoding with auxiliary features
+- Quantile Regression DQN (QR-DQN) for distributional RL
+- N-step returns for faster reward propagation
 """
 
 import random
@@ -153,6 +155,115 @@ class DuelingDQN(nn.Module):
         self.adv_fc2.reset_noise()
 
 
+class QuantileDQN(nn.Module):
+    """
+    Quantile Regression DQN (Dabney et al., 2018).
+
+    Instead of estimating a single Q-value per action, this network outputs
+    N_QUANTILES quantile estimates for each action. The Q-value is the mean
+    of the quantile estimates: Q(s,a) = (1/N) * sum(theta_i(s,a)).
+
+    Uses the same convolutional backbone and dueling structure as DuelingDQN,
+    but the value and advantage heads output N_QUANTILES values each.
+    """
+
+    N_QUANTILES = 51
+
+    def __init__(self, in_channels=18):
+        super().__init__()
+        n_quant = self.N_QUANTILES
+
+        # Convolutional feature extractor (same as DuelingDQN)
+        self.conv1 = nn.Conv2d(in_channels, 256, kernel_size=2, padding=0)
+        self.bn1 = nn.BatchNorm2d(256)
+        self.conv2 = nn.Conv2d(256, 256, kernel_size=2, padding=0)
+        self.bn2 = nn.BatchNorm2d(256)
+        self.conv3 = nn.Conv2d(256, 256, kernel_size=2, padding=0)
+        self.bn3 = nn.BatchNorm2d(256)
+
+        flat_size = 256
+
+        # Value stream: outputs N_QUANTILES values for V(s)
+        self.value_fc1 = nn.Linear(flat_size, 256)
+        self.value_fc2 = NoisyLinear(256, n_quant)
+
+        # Advantage stream: outputs 4 * N_QUANTILES values for A(s,a)
+        self.adv_fc1 = nn.Linear(flat_size, 256)
+        self.adv_fc2 = NoisyLinear(256, 4 * n_quant)
+
+    def forward(self, x):
+        batch_size = x.size(0)
+        n_quant = self.N_QUANTILES
+
+        # Feature extraction
+        x = F.relu(self.bn1(self.conv1(x)))
+        x = F.relu(self.bn2(self.conv2(x)))
+        x = F.relu(self.bn3(self.conv3(x)))
+        x = x.view(batch_size, -1)
+
+        # Value stream: (batch, N_QUANTILES)
+        v = F.relu(self.value_fc1(x))
+        v = self.value_fc2(v).view(batch_size, 1, n_quant)
+
+        # Advantage stream: (batch, 4, N_QUANTILES)
+        a = F.relu(self.adv_fc1(x))
+        a = self.adv_fc2(a).view(batch_size, 4, n_quant)
+
+        # Dueling combine: Q = V + (A - mean(A))
+        q = v + (a - a.mean(dim=1, keepdim=True))  # (batch, 4, N_QUANTILES)
+        return q
+
+    def q_values(self, x):
+        """Return mean Q-values across quantiles: (batch, 4)."""
+        return self.forward(x).mean(dim=2)
+
+    def reset_noise(self):
+        self.value_fc2.reset_noise()
+        self.adv_fc2.reset_noise()
+
+
+def quantile_huber_loss(quantiles, target, taus, kappa=1.0):
+    """
+    Compute the quantile Huber loss for QR-DQN.
+
+    For each quantile tau_i, the asymmetric weight ensures:
+    - Overestimation (positive error) is penalized by tau_i
+    - Underestimation (negative error) is penalized by (1 - tau_i)
+
+    This learns the full return distribution, not just the expected value.
+
+    Args:
+        quantiles: predicted quantile values, shape (batch, N_QUANTILES)
+        target: target quantile values, shape (batch, N_QUANTILES)
+        taus: quantile midpoints, shape (1, N_QUANTILES)
+        kappa: Huber loss threshold (1.0 = standard Huber)
+
+    Returns:
+        loss: scalar tensor, mean quantile Huber loss
+    """
+    n_quant = quantiles.shape[1]
+
+    # Pairwise TD errors: (batch, N_QUANTILES, N_QUANTILES)
+    # quantiles[:, :, None] = (batch, N_quant_pred, 1)
+    # target[:, None, :] = (batch, 1, N_quant_target)
+    td_error = target[:, None, :] - quantiles[:, :, None]
+
+    # Huber loss element-wise
+    huber = torch.where(
+        td_error.abs() <= kappa,
+        0.5 * td_error.pow(2),
+        kappa * (td_error.abs() - 0.5 * kappa),
+    )
+
+    # Asymmetric weighting by quantile level
+    # taus shape: (1, N_QUANTILES) -> (1, N_QUANTILES, 1)
+    taus_expanded = taus.unsqueeze(2)
+    quantile_weight = torch.abs(taus_expanded - (td_error < 0).float())
+
+    loss = (quantile_weight * huber).sum(dim=2).mean(dim=1)
+    return loss
+
+
 class PrioritizedReplayBuffer:
     """
     Prioritized Experience Replay (Schaul et al., 2016).
@@ -275,12 +386,13 @@ class NStepBuffer:
 
 class DQNAgent:
     """
-    Optimized DQN Agent with:
+    Rainbow-style DQN Agent with:
     - Dueling DQN architecture
     - Prioritized Experience Replay
     - Noisy Networks for exploration (no epsilon-greedy needed)
     - Double DQN for reduced overestimation
     - N-step returns (faster reward propagation)
+    - Quantile Regression DQN (distributional RL)
     - Gradient clipping
     - Learning rate scheduling
     """
@@ -297,6 +409,7 @@ class DQNAgent:
         batch_size=256,
         target_update=500,
         buffer_size=200_000,
+        distributional=True,
         device=None,
     ):
         self.device = device or torch.device(
@@ -304,7 +417,9 @@ class DQNAgent:
             else "cuda" if torch.cuda.is_available()
             else "cpu"
         )
+        self.distributional = distributional
         print(f"Using device: {self.device}")
+        print(f"Distributional (QR-DQN): {self.distributional}")
 
         self.gamma = gamma
         self.epsilon_start = epsilon_start
@@ -313,9 +428,19 @@ class DQNAgent:
         self.batch_size = batch_size
         self.target_update = target_update
 
-        # Networks
-        self.policy_net = DuelingDQN(in_channels=18).to(self.device)
-        self.target_net = DuelingDQN(in_channels=18).to(self.device)
+        # Networks: choose architecture based on distributional flag
+        if self.distributional:
+            self.policy_net = QuantileDQN(in_channels=18).to(self.device)
+            self.target_net = QuantileDQN(in_channels=18).to(self.device)
+            # Precompute quantile midpoints: tau_i = (i + 0.5) / N
+            n_quant = QuantileDQN.N_QUANTILES
+            self.taus = torch.FloatTensor(
+                [(i + 0.5) / n_quant for i in range(n_quant)]
+            ).unsqueeze(0).to(self.device)  # (1, N_QUANTILES)
+        else:
+            self.policy_net = DuelingDQN(in_channels=18).to(self.device)
+            self.target_net = DuelingDQN(in_channels=18).to(self.device)
+
         self.target_net.load_state_dict(self.policy_net.state_dict())
         self.target_net.eval()
 
@@ -336,6 +461,8 @@ class DQNAgent:
         """
         Select action using noisy network (no epsilon-greedy needed in training).
         Falls back to epsilon-greedy for early exploration.
+
+        For distributional mode, Q(s,a) = mean of quantile estimates for action a.
         """
         if not valid_moves:
             return 0
@@ -349,7 +476,13 @@ class DQNAgent:
             if training:
                 self.policy_net.reset_noise()
             self.policy_net.eval()
-            q_values = self.policy_net(state_tensor).cpu().numpy()[0]
+
+            if self.distributional:
+                # Q-values = mean across quantiles for each action
+                q_values = self.policy_net.q_values(state_tensor).cpu().numpy()[0]
+            else:
+                q_values = self.policy_net(state_tensor).cpu().numpy()[0]
+
             self.policy_net.train()
 
             # Mask invalid actions with -inf
@@ -375,7 +508,11 @@ class DQNAgent:
             self.n_step_buffer.reset()
 
     def train_step(self):
-        """Training step with Double Dueling DQN + Prioritized Replay + N-step returns."""
+        """Training step with Double Dueling DQN + Prioritized Replay + N-step returns.
+
+        When distributional=True, uses quantile regression loss (QR-DQN).
+        Otherwise, uses standard Huber loss.
+        """
         if len(self.memory) < self.batch_size:
             return None
 
@@ -393,6 +530,40 @@ class DQNAgent:
         self.policy_net.reset_noise()
         self.target_net.reset_noise()
 
+        if self.distributional:
+            loss, td_errors = self._train_step_distributional(
+                states_t, actions_t, rewards_t, next_states_t, dones_t,
+                valid_moves_batch, is_weights_t,
+            )
+        else:
+            loss, td_errors = self._train_step_standard(
+                states_t, actions_t, rewards_t, next_states_t, dones_t,
+                valid_moves_batch, is_weights_t,
+            )
+
+        # Update priorities in replay buffer
+        self.memory.update_priorities(indices, td_errors)
+
+        self.optimizer.zero_grad()
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), 10.0)
+        self.optimizer.step()
+        self.scheduler.step()
+
+        self.steps_done += 1
+
+        # Hard update target network periodically
+        if self.steps_done % self.target_update == 0:
+            self.target_net.load_state_dict(self.policy_net.state_dict())
+
+        loss_val = loss.item()
+        self.training_losses.append(loss_val)
+        return loss_val
+
+    def _train_step_standard(self, states_t, actions_t, rewards_t,
+                             next_states_t, dones_t, valid_moves_batch,
+                             is_weights_t):
+        """Standard Double DQN training with Huber loss."""
         # Current Q-values
         q_values = self.policy_net(states_t).gather(1, actions_t.unsqueeze(1)).squeeze(1)
 
@@ -415,26 +586,68 @@ class DQNAgent:
 
         # TD errors for priority update
         td_errors = (q_values - target).detach().cpu().numpy()
-        self.memory.update_priorities(indices, td_errors)
 
         # Weighted loss (importance sampling correction)
         loss = (is_weights_t * F.smooth_l1_loss(q_values, target, reduction='none')).mean()
+        return loss, td_errors
 
-        self.optimizer.zero_grad()
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), 10.0)
-        self.optimizer.step()
-        self.scheduler.step()
+    def _train_step_distributional(self, states_t, actions_t, rewards_t,
+                                   next_states_t, dones_t, valid_moves_batch,
+                                   is_weights_t):
+        """Distributional training with quantile regression (QR-DQN).
 
-        self.steps_done += 1
+        Instead of learning E[R], learns the quantile function of the return
+        distribution. The loss is an asymmetrically-weighted Huber loss
+        that pushes each quantile estimate toward the correct quantile
+        of the target distribution.
+        """
+        batch_size = states_t.size(0)
+        n_quant = QuantileDQN.N_QUANTILES
 
-        # Soft update target network
-        if self.steps_done % self.target_update == 0:
-            self.target_net.load_state_dict(self.policy_net.state_dict())
+        # Current quantile estimates for chosen actions: (batch, N_QUANTILES)
+        all_quantiles = self.policy_net(states_t)  # (batch, 4, N_QUANTILES)
+        actions_expanded = actions_t.unsqueeze(1).unsqueeze(2).expand(
+            batch_size, 1, n_quant
+        )
+        current_quantiles = all_quantiles.gather(1, actions_expanded).squeeze(1)
 
-        loss_val = loss.item()
-        self.training_losses.append(loss_val)
-        return loss_val
+        # Double DQN action selection using mean Q-values from policy net
+        with torch.no_grad():
+            next_q_policy = self.policy_net.q_values(next_states_t)  # (batch, 4)
+
+            # Mask invalid actions
+            for i, vm in enumerate(valid_moves_batch):
+                mask = torch.ones(4, device=self.device) * (-1e9)
+                for m in vm:
+                    mask[m] = 0
+                next_q_policy[i] += mask
+
+            best_actions = next_q_policy.argmax(1)  # (batch,)
+
+            # Get target quantiles for best actions
+            next_quantiles_all = self.target_net(next_states_t)  # (batch, 4, N_QUANTILES)
+            best_expanded = best_actions.unsqueeze(1).unsqueeze(2).expand(
+                batch_size, 1, n_quant
+            )
+            next_quantiles = next_quantiles_all.gather(1, best_expanded).squeeze(1)
+
+            # Compute target quantiles with n-step returns
+            # T_theta = r + gamma^n * theta(s', a*) for non-terminal
+            target_quantiles = rewards_t.unsqueeze(1) + \
+                (self.gamma ** self.N_STEPS) * next_quantiles * \
+                (1 - dones_t).unsqueeze(1)
+
+        # Quantile Huber loss per sample: (batch,)
+        sample_losses = quantile_huber_loss(
+            current_quantiles, target_quantiles, self.taus
+        )
+
+        # TD error for priority update: use mean absolute quantile error
+        td_errors = (current_quantiles - target_quantiles).abs().mean(dim=1).detach().cpu().numpy()
+
+        # Apply importance sampling weights
+        loss = (is_weights_t * sample_losses).mean()
+        return loss, td_errors
 
     def save(self, path):
         torch.save({
@@ -443,6 +656,7 @@ class DQNAgent:
             'optimizer': self.optimizer.state_dict(),
             'steps_done': self.steps_done,
             'epsilon': self.get_epsilon(),
+            'distributional': self.distributional,
         }, path)
         print(f"Model saved to {path}")
 
