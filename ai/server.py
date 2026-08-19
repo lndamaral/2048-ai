@@ -1,0 +1,210 @@
+"""
+Servidor API para a IA jogar 2048 no browser.
+Suporta três agentes: DQN, Expectimax e N-Tuple.
+
+Uso:
+    python ai/server.py [--port 8081] [--time-budget 100]
+"""
+
+import argparse
+import json
+import os
+from datetime import datetime
+import numpy as np
+from flask import Flask, jsonify, request
+from flask_cors import CORS
+
+from dqn_agent import DQNAgent, encode_state
+from expectimax_native import ExpectimaxAgent
+from ntuple_agent import NTupleNetwork
+from expectimax_agent import fast_move
+import ctypes
+
+app = Flask(__name__)
+CORS(app)
+
+dqn_agent = None
+expectimax_agent = ExpectimaxAgent(depth=3)
+ntuple_net = None
+ntuple_c_lib = None
+
+
+def _is_valid_move(grid, direction):
+    from game import Game2048
+    g = Game2048()
+    g.grid = grid.copy()
+    return g.is_valid_move(direction)
+
+
+def _ntuple_select_action(grid):
+    """N-Tuple search via C — 3-ply instantâneo."""
+    if ntuple_c_lib:
+        flat = grid.flatten().astype(ctypes.c_int)
+        arr = (ctypes.c_int * 16)(*flat)
+        return ntuple_c_lib.ntuple_select_action(arr, 2)  # search_depth=2 → 5-ply
+    # Fallback Python 1-ply
+    best_action = 0
+    best_value = -1e18
+    for d in range(4):
+        after, reward, moved = fast_move(grid, d)
+        if not moved:
+            continue
+        value = reward + ntuple_net.evaluate(after)
+        if value > best_value:
+            best_value = value
+            best_action = d
+    return best_action
+
+
+@app.route('/move', methods=['POST'])
+def get_move():
+    """Recebe o grid e o agente desejado, retorna a melhor ação."""
+    data = request.json
+    grid = np.array(data['grid'], dtype=np.int32)
+    agent_type = data.get('agent', 'expectimax')
+
+    direction_names = ['up', 'right', 'down', 'left']
+
+    if agent_type == 'dqn':
+        if dqn_agent is None:
+            return jsonify({'action': -1, 'message': 'DQN model not loaded'})
+
+        encoded = encode_state(grid)
+        valid_moves = [d for d in range(4) if _is_valid_move(grid, d)]
+        if not valid_moves:
+            return jsonify({'action': -1, 'message': 'No valid moves'})
+
+        action = dqn_agent.select_action(encoded, valid_moves, training=False)
+        return jsonify({
+            'action': action,
+            'direction': direction_names[action],
+            'agent': 'dqn',
+        })
+
+    elif agent_type == 'ntuple':
+        if ntuple_net is None:
+            return jsonify({'action': -1, 'message': 'N-Tuple model not loaded'})
+
+        action = _ntuple_select_action(grid)
+        return jsonify({
+            'action': action,
+            'direction': direction_names[action],
+            'agent': 'ntuple',
+        })
+
+    else:  # expectimax
+        action, depth_reached = expectimax_agent.select_action(grid)
+        return jsonify({
+            'action': action,
+            'direction': direction_names[action],
+            'agent': 'expectimax',
+            'depth_reached': int(depth_reached),
+        })
+
+
+@app.route('/report', methods=['POST'])
+def save_report():
+    """Salva relatório JSON ao final de cada partida."""
+    data = request.json
+    reports_dir = os.path.join(os.path.dirname(__file__), 'reports')
+    os.makedirs(reports_dir, exist_ok=True)
+
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    agent = data.get('agent', 'unknown')
+    max_tile = data.get('max_tile', 0)
+    score = data.get('score', 0)
+
+    report = {
+        'timestamp': datetime.now().isoformat(),
+        'agent': agent,
+        'score': score,
+        'max_tile': max_tile,
+        'moves': data.get('moves', 0),
+        'won': data.get('won', False),
+        'final_grid': data.get('final_grid', []),
+        'move_history': data.get('move_history', []),
+        'duration_ms': data.get('duration_ms', 0),
+        'config': {
+            'expectimax_depth': expectimax_agent.depth if agent == 'expectimax' else None,
+            'dqn_steps': dqn_agent.steps_done if dqn_agent and agent == 'dqn' else None,
+            'ntuple': agent == 'ntuple',
+        },
+    }
+
+    filename = f'{timestamp}_{agent}_s{score}_t{max_tile}.json'
+    filepath = os.path.join(reports_dir, filename)
+    with open(filepath, 'w') as f:
+        json.dump(report, f, indent=2)
+
+    print(f"📊 Relatório salvo: {filename} | Score: {score} | Max: {max_tile} | {'WIN' if data.get('won') else 'GAME OVER'}")
+    return jsonify({'saved': filename})
+
+
+@app.route('/status', methods=['GET'])
+def status():
+    return jsonify({
+        'dqn_loaded': dqn_agent is not None,
+        'dqn_steps': dqn_agent.steps_done if dqn_agent else 0,
+        'expectimax_depth': expectimax_agent.depth,
+        'ntuple_loaded': ntuple_net is not None,
+        'agents': ['expectimax'] +
+                  (['dqn'] if dqn_agent else []) +
+                  (['ntuple'] if ntuple_net else []),
+    })
+
+
+def main():
+    global dqn_agent, ntuple_net, ntuple_c_lib
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--model', default='checkpoints/best.pt')
+    parser.add_argument('--port', type=int, default=8081)
+    parser.add_argument('--depth', type=int, default=10, help='Expectimax max search depth')
+    parser.add_argument('--time-budget', type=int, default=100, help='Time budget per move in ms')
+    args = parser.parse_args()
+
+    expectimax_agent.depth = args.depth
+    expectimax_agent.time_budget_ms = args.time_budget
+
+    # Carrega DQN
+    model_path = os.path.join(os.path.dirname(__file__), args.model)
+    if os.path.exists(model_path):
+        dqn_agent = DQNAgent()
+        dqn_agent.load(model_path)
+    else:
+        print(f"DQN não encontrado ({model_path})")
+
+    # Carrega N-Tuple via C (rápido)
+    ntuple_path = os.path.join(os.path.dirname(__file__), 'checkpoints', 'ntuple_best.bin')
+    if not os.path.exists(ntuple_path):
+        ntuple_path = os.path.join(os.path.dirname(__file__), 'checkpoints', 'ntuple_latest.bin')
+    if os.path.exists(ntuple_path):
+        try:
+            ntuple_c_so = os.path.join(os.path.dirname(__file__), 'ntuple_c.so')
+            ntuple_c_lib = ctypes.CDLL(ntuple_c_so)
+            ntuple_c_lib.ntuple_load.argtypes = [ctypes.c_char_p]
+            ntuple_c_lib.ntuple_load.restype = ctypes.c_int
+            ntuple_c_lib.ntuple_select_action.argtypes = [ctypes.POINTER(ctypes.c_int), ctypes.c_int]
+            ntuple_c_lib.ntuple_select_action.restype = ctypes.c_int
+            ntuple_c_lib.ntuple_load(ntuple_path.encode())
+            ntuple_net = True  # flag para status endpoint
+        except Exception as e:
+            print(f"N-Tuple C falhou ({e}), tentando Python...")
+            ntuple_net = NTupleNetwork()
+            ntuple_net.load(ntuple_path)
+            ntuple_c_lib = None
+    else:
+        print(f"N-Tuple não encontrado — treine com: ./ntuple_train --episodes 50000")
+
+    agents = ['Expectimax']
+    if dqn_agent: agents.append(f'DQN ({dqn_agent.steps_done} steps)')
+    if ntuple_net: agents.append('N-Tuple')
+
+    print(f"\nServidor IA rodando em http://localhost:{args.port}")
+    print(f"Agentes: {' + '.join(agents)}")
+    print(f"Abra http://localhost:8080 e clique em 'AI Play'\n")
+    app.run(host='0.0.0.0', port=args.port, debug=False)
+
+
+if __name__ == '__main__':
+    main()

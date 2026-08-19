@@ -1,0 +1,34 @@
+# Original game
+.sass-cache/
+
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Compiled binaries (rebuild with make)
+*.so
+*.o
+ai/expectimax_calibrate
+ai/ntuple_train
+
+# Model checkpoints (too large for git — download separately or train)
+ai/checkpoints/*.pt
+ai/checkpoints/*.bin
+
+# Training logs (generated during training)
+ai/*.log
+
+# Game reports (generated during play)
+ai/reports/*.json
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
