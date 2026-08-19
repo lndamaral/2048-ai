@@ -89,14 +89,18 @@
     var gm = window.gameManager;
     if (!gm) return;
 
-    if (gm.over || (gm.won && !gm.keepPlaying)) {
+    if (gm.won && !gm.keepPlaying) {
+      // Auto-continue past 2048 — keep playing until game over
+      gm.keepPlaying = true;
+      gm.actuator.continueGame();
+    }
+
+    if (gm.over) {
       aiPlaying = false;
       updateButton();
-      var won = gm.won;
-      var statusMsg = (won ? "WIN! " : "Game Over! ") +
-        "Score: " + gm.score + " | Max: " + getMaxTile() + " | Moves: " + moveCount;
+      var statusMsg = "Game Over! Score: " + gm.score + " | Max: " + getMaxTile() + " | Moves: " + moveCount;
       updateStatus(statusMsg);
-      sendReport(won);
+      sendReport(gm.won);
       return;
     }
 
