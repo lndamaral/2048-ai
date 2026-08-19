@@ -80,11 +80,15 @@
 
 ### 4.2 Analysis
 
-**Our N-Tuple vs Szubert small (comparable training):**
-- Szubert: 500K ep, 1-ply training, 1-ply play → score 51,321, win 90.6%
-- Ours: 331K ep, 3-ply training, 5-ply play → score ~62,000, win ~88%
+**IMPORTANT NOTE ON COMPARISON METHODOLOGY:**
 
-Our score is **higher** (62K vs 51K) despite fewer episodes, but our win rate is **lower** (88% vs 90.6%). This confirms a key insight from Szubert's paper (Section VI-A): **the agent optimizes for score, not win rate**. Our 5-ply search + 3-ply training produces higher scores (reaching 4096 and 8192 more often) but sometimes loses "easy" games that Szubert's simpler agent would win.
+Our training log metrics (~83% 2048 rate, ~59k score) are measured with **3-ply search**, while Szubert reported with **1-ply (no search)**. These are NOT directly comparable. A fair comparison requires benchmarking our trained weights at 1-ply, 3-ply, and 5-ply separately. This is pending — see benchmark protocol below.
+
+**What we know so far (approximate, search-levels differ):**
+- Szubert: 500K ep, 1-ply training, **1-ply** eval → score 51,321, win 90.6%
+- Ours: 500K ep, 3-ply training, **3-ply** eval → score ~59,000, win ~83%
+
+The comparison suggests our raw weights (without search advantage) may underperform Szubert's at the same episode count. However, our 5-ply play search may compensate significantly. Final numbers require the formal benchmark with controlled search depths.
 
 > *"A rational agent prefers to get sometimes the reward of 16384 rather than to get always the reward of 2048, which would mean winning the game."* — Szubert (2014)
 
