@@ -1,4 +1,4 @@
-# TODO — Pending Tasks and Future Investigations
+# TODO — Pending Tasks, Observations and Mental Notes
 
 ## High Priority
 
@@ -21,6 +21,9 @@
 - [ ] **Regenerate charts**: Update analysis.py charts with final training data from all 3 agents
 - [ ] **Game report analysis**: Analyze JSON reports in ai/reports/ to find patterns in failures — which board configurations lead to game over for each agent?
 - [ ] **Screenshots for documentation**: Capture browser screenshots of each agent playing (winning and losing) for the thesis
+- [ ] **Move distribution analysis**: Track which directions each agent favors. Does the N-Tuple learn to avoid UP (which disrupts snake patterns)? How does this compare to Expectimax?
+- [ ] **Endgame analysis**: At what score/tile does each agent typically die? Is there a common board pattern at game over? This could reveal the "death pattern" each agent is vulnerable to.
+- [ ] **Score variance comparison**: Which agent is most consistent? Low variance = reliable strategy. High variance = luck-dependent. Important for understanding robustness.
 
 ## Code
 
@@ -36,3 +39,39 @@
 - [ ] **Add N-Tuple training progression to THESIS.md**: Document Stage 1 vs Stage 2, the 16384 tile milestone, TC-learning impact.
 - [ ] **Final comparison chapter in THESIS.md**: Side-by-side analysis of all 3 agents at their ceiling with charts and statistical analysis.
 - [ ] **Final commit with all results**: Push completed training logs, updated charts, final report
+
+## Observations & Lessons Learned (to document)
+
+- [ ] **DQN is structurally inefficient for 2048**: The state space is small enough for tabular methods. DQN's generalization via neural networks adds overhead without proportional benefit. Worth documenting as a "when NOT to use deep RL" case study.
+
+- [ ] **The snake pattern paradox**: The best short-term move (maintain snake) can be the worst long-term move (creates vulnerability). This is a general lesson about greedy heuristics in stochastic games. Expectimax can't resolve this because it evaluates the heuristic at leaf nodes — if the heuristic itself is greedy, deeper search doesn't help.
+
+- [ ] **Forward TD vs Backward TD**: Forward TD(0) converges faster and more stably because it updates weights immediately using fresh information. Backward TD batches all updates to the end of the game, causing large delayed corrections. This was empirically confirmed: v1 (backward) learned slower than the C trainer (forward).
+
+- [ ] **LR sensitivity in N-Tuple networks**: LR=0.1 caused overflow, LR=0.001 was too slow, LR=0.01 was optimal. N-Tuple networks are sensitive because each weight is updated independently — there's no gradient normalization like in neural networks.
+
+- [ ] **The transpose bug**: A reminder that bit manipulation functions are NOT portable across different bit layouts. Always verify with concrete test cases before trusting copy-pasted bit tricks. Cost us hours of debugging.
+
+- [ ] **Lookup tables vs full evaluation tradeoff**: Per-row lookup tables are fast but lose 2D spatial information. The snake pattern fundamentally requires 2D evaluation. This tradeoff is a general lesson for game evaluation functions.
+
+- [ ] **Multi-stage training is more efficient**: 1-ply for basic patterns + 3-ply for refinement. The 1-ply stage builds a reasonable foundation quickly, and 3-ply refines without wasting expensive search on trivial early patterns.
+
+- [ ] **TC-learning prevents weight oscillation**: Weights that receive contradictory updates (sometimes positive, sometimes negative) get their LR automatically reduced. This is especially important in stochastic games where the same board state can lead to different outcomes due to randomness.
+
+- [ ] **C implementation was essential, not optional**: Python was 300-450x slower. The N-Tuple training that takes ~14h in C would take ~6 months in Python. The lesson: prototype in Python, validate the algorithm works, then rewrite performance-critical code in C.
+
+- [ ] **Auto-calibration revealed that merge_potential and trapped_tile heuristics add zero value**: Sometimes the simplest heuristic set is the best. Adding complexity doesn't always help — the calibrator confirmed this empirically.
+
+- [ ] **16384 tile appeared during training**: This is significant — very few AIs reach this tile. It proves our N-Tuple architecture has sufficient capacity to learn deep strategies. Document the exact episode and training configuration when this happened.
+
+## Future Ideas (stretch goals)
+
+- [ ] **Replay viewer**: Build a web-based replay viewer that loads a JSON game report and animates the game move-by-move, showing what the AI was "thinking" (evaluation scores for each direction).
+
+- [ ] **Heatmap of tile placement**: Visualize where each agent tends to place high-value tiles. Expected: Expectimax always uses corners, N-Tuple might discover alternative strategies.
+
+- [ ] **Training curriculum**: Instead of random starting positions, start some training games from difficult mid-game positions to improve endgame play.
+
+- [ ] **Agent ensemble**: Have the 3 agents "vote" on each move. Does consensus lead to better play than any individual agent?
+
+- [ ] **Transfer to 5x5 grid**: Can the learned N-Tuple weights transfer to a larger board? Or does it need retraining from scratch?
