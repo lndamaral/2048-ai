@@ -1,0 +1,7 @@
+/Users/leonardo/Projects/2048/ai/ntuple_agent.py:110: RuntimeWarning: overflow encountered in scalar add
+  total += w[idx]
+/Users/leonardo/Projects/2048/ai/ntuple_agent.py:218: RuntimeWarning: invalid value encountered in scalar subtract
+  delta = curr_reward + v_curr - v_prev
+N-Tuple salvo em /Users/leonardo/Projects/2048/ai/checkpoints/ntuple_latest.bin (1088.0 MB)
+
+Treinamento concluído! Best avg score: 0

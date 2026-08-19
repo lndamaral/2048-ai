@@ -1,0 +1,211 @@
+Usando dispositivo: mps
+Modelo carregado de /Users/leonardo/Projects/2048/ai/checkpoints/latest.pt (steps: 10426)
+Modelo salvo em /Users/leonardo/Projects/2048/ai/checkpoints/best.pt
+Modelo salvo em /Users/leonardo/Projects/2048/ai/checkpoints/best.pt
+
+============================================================
+Episódio 100/5000 | Tempo: 614s
+============================================================
+  Score médio:  1132
+  Score máximo: 2896
+  Best score:   2896
+  Epsilon:      0.8969
+  Max tiles:    {32: 6, 64: 37, 128: 48, 256: 9}
+  2048 alcançado: 0x total
+  Loss média:   0.015209
+Modelo salvo em /Users/leonardo/Projects/2048/ai/checkpoints/latest.pt
+
+============================================================
+Episódio 200/5000 | Tempo: 1225s
+============================================================
+  Score médio:  1118
+  Score máximo: 2752
+  Best score:   2896
+  Epsilon:      0.8450
+  Max tiles:    {32: 1, 64: 42, 128: 50, 256: 7}
+  2048 alcançado: 0x total
+  Loss média:   0.028951
+Modelo salvo em /Users/leonardo/Projects/2048/ai/checkpoints/latest.pt
+
+============================================================
+Episódio 300/5000 | Tempo: 1846s
+============================================================
+  Score médio:  1175
+  Score máximo: 2588
+  Best score:   2896
+  Epsilon:      0.7948
+  Max tiles:    {16: 1, 32: 6, 64: 27, 128: 56, 256: 10}
+  2048 alcançado: 0x total
+  Loss média:   0.060217
+Modelo salvo em /Users/leonardo/Projects/2048/ai/checkpoints/latest.pt
+Modelo salvo em /Users/leonardo/Projects/2048/ai/checkpoints/best.pt
+Modelo salvo em /Users/leonardo/Projects/2048/ai/checkpoints/best.pt
+
+============================================================
+Episódio 400/5000 | Tempo: 2447s
+============================================================
+  Score médio:  1147
+  Score máximo: 3148
+  Best score:   3148
+  Epsilon:      0.7486
+  Max tiles:    {16: 1, 32: 6, 64: 36, 128: 45, 256: 12}
+  2048 alcançado: 0x total
+  Loss média:   0.106319
+Modelo salvo em /Users/leonardo/Projects/2048/ai/checkpoints/latest.pt
+Modelo salvo em /Users/leonardo/Projects/2048/ai/checkpoints/best.pt
+
+============================================================
+Episódio 500/5000 | Tempo: 3099s
+============================================================
+  Score médio:  1188
+  Score máximo: 3868
+  Best score:   3868
+  Epsilon:      0.7039
+  Max tiles:    {32: 12, 64: 30, 128: 45, 256: 13}
+  2048 alcançado: 0x total
+  Loss média:   0.172795
+Modelo salvo em /Users/leonardo/Projects/2048/ai/checkpoints/latest.pt
+
+============================================================
+Episódio 600/5000 | Tempo: 3692s
+============================================================
+  Score médio:  1125
+  Score máximo: 2900
+  Best score:   3868
+  Epsilon:      0.6636
+  Max tiles:    {16: 1, 32: 6, 64: 37, 128: 45, 256: 11}
+  2048 alcançado: 0x total
+  Loss média:   0.265788
+Modelo salvo em /Users/leonardo/Projects/2048/ai/checkpoints/latest.pt
+
+============================================================
+Episódio 700/5000 | Tempo: 4303s
+============================================================
+  Score médio:  1141
+  Score máximo: 3200
+  Best score:   3868
+  Epsilon:      0.6250
+  Max tiles:    {32: 4, 64: 34, 128: 53, 256: 9}
+  2048 alcançado: 0x total
+  Loss média:   0.360933
+Modelo salvo em /Users/leonardo/Projects/2048/ai/checkpoints/latest.pt
+
+============================================================
+Episódio 800/5000 | Tempo: 4881s
+============================================================
+  Score médio:  1038
+  Score máximo: 2780
+  Best score:   3868
+  Epsilon:      0.5908
+  Max tiles:    {16: 1, 32: 9, 64: 38, 128: 46, 256: 6}
+  2048 alcançado: 0x total
+  Loss média:   0.487082
+Modelo salvo em /Users/leonardo/Projects/2048/ai/checkpoints/latest.pt
+
+============================================================
+Episódio 900/5000 | Tempo: 5472s
+============================================================
+  Score médio:  1103
+  Score máximo: 2680
+  Best score:   3868
+  Epsilon:      0.5574
+  Max tiles:    {32: 5, 64: 37, 128: 50, 256: 8}
+  2048 alcançado: 0x total
+  Loss média:   0.582629
+Modelo salvo em /Users/leonardo/Projects/2048/ai/checkpoints/latest.pt
+
+============================================================
+Episódio 1000/5000 | Tempo: 6132s
+============================================================
+  Score médio:  1222
+  Score máximo: 2792
+  Best score:   3868
+  Epsilon:      0.5235
+  Max tiles:    {32: 5, 64: 30, 128: 54, 256: 11}
+  2048 alcançado: 0x total
+  Loss média:   0.699012
+Modelo salvo em /Users/leonardo/Projects/2048/ai/checkpoints/latest.pt
+
+============================================================
+Episódio 1100/5000 | Tempo: 6727s
+============================================================
+  Score médio:  1115
+  Score máximo: 3116
+  Best score:   3868
+  Epsilon:      0.4936
+  Max tiles:    {32: 6, 64: 37, 128: 48, 256: 9}
+  2048 alcançado: 0x total
+  Loss média:   0.881327
+Modelo salvo em /Users/leonardo/Projects/2048/ai/checkpoints/latest.pt
+
+============================================================
+Episódio 1200/5000 | Tempo: 7340s
+============================================================
+  Score médio:  1154
+  Score máximo: 3192
+  Best score:   3868
+  Epsilon:      0.4647
+  Max tiles:    {32: 9, 64: 36, 128: 46, 256: 9}
+  2048 alcançado: 0x total
+  Loss média:   0.991907
+Modelo salvo em /Users/leonardo/Projects/2048/ai/checkpoints/latest.pt
+
+============================================================
+Episódio 1300/5000 | Tempo: 7939s
+============================================================
+  Score médio:  1174
+  Score máximo: 2812
+  Best score:   3868
+  Epsilon:      0.4373
+  Max tiles:    {32: 7, 64: 34, 128: 47, 256: 12}
+  2048 alcançado: 0x total
+  Loss média:   1.032177
+Modelo salvo em /Users/leonardo/Projects/2048/ai/checkpoints/latest.pt
+
+============================================================
+Episódio 1400/5000 | Tempo: 8554s
+============================================================
+  Score médio:  1142
+  Score máximo: 2776
+  Best score:   3868
+  Epsilon:      0.4123
+  Max tiles:    {16: 1, 32: 8, 64: 32, 128: 47, 256: 12}
+  2048 alcançado: 0x total
+  Loss média:   1.189064
+Modelo salvo em /Users/leonardo/Projects/2048/ai/checkpoints/latest.pt
+
+============================================================
+Episódio 1500/5000 | Tempo: 9715s
+============================================================
+  Score médio:  1217
+  Score máximo: 3200
+  Best score:   3868
+  Epsilon:      0.3874
+  Max tiles:    {16: 1, 32: 10, 64: 30, 128: 48, 256: 11}
+  2048 alcançado: 0x total
+  Loss média:   1.270835
+Modelo salvo em /Users/leonardo/Projects/2048/ai/checkpoints/latest.pt
+
+============================================================
+Episódio 1600/5000 | Tempo: 10340s
+============================================================
+  Score médio:  1061
+  Score máximo: 3200
+  Best score:   3868
+  Epsilon:      0.3661
+  Max tiles:    {16: 1, 32: 13, 64: 40, 128: 37, 256: 9}
+  2048 alcançado: 0x total
+  Loss média:   1.248520
+Modelo salvo em /Users/leonardo/Projects/2048/ai/checkpoints/latest.pt
+
+============================================================
+Episódio 1700/5000 | Tempo: 11049s
+============================================================
+  Score médio:  1150
+  Score máximo: 3088
+  Best score:   3868
+  Epsilon:      0.3450
+  Max tiles:    {32: 5, 64: 44, 128: 39, 256: 12}
+  2048 alcançado: 0x total
+  Loss média:   1.390560
+Modelo salvo em /Users/leonardo/Projects/2048/ai/checkpoints/latest.pt

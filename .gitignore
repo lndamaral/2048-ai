@@ -18,8 +18,10 @@ ai/ntuple_train
 ai/checkpoints/*.pt
 ai/checkpoints/*.bin
 
-# Training logs (generated during training)
+# Training logs in root ai/ (active training output)
 ai/*.log
+
+# Archived logs are kept in ai/logs/ (committed)
 
 # Game reports (generated during play)
 ai/reports/*.json
